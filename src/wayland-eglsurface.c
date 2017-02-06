@@ -519,7 +519,7 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
            goto fail;
         }
 
-        socket[1] = 0; /* unused */
+        socket[1] = -1; /* unused */
     } else {
         /* Create a new socket pair for both EGLStream endpoints */
         ret = socketpair(AF_UNIX, SOCK_STREAM, 0, socket);
@@ -577,6 +577,11 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
     if (surface->ctx.eglStream == EGL_NO_STREAM_KHR) {
        err = data->egl.getError();
        goto fail;
+    }
+
+    /* Close server socket on the client side */
+    if (socket[1] >= 0) {
+        close(socket[1]);
     }
 
     return EGL_SUCCESS;
@@ -983,6 +988,11 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
 
     surface->swapInterval = 1; // Default swap interval is 1
 
+    // Set client's swap interval if there is an override on the compositor
+    // side, Otherwise set to default
+    wl_eglstream_display_swap_interval(display->wlStreamDpy,
+                                       surface->ctx.wlStreamResource,
+                                       surface->swapInterval);
     window->private = surface;
     window->resize_callback = resize_callback;
     wlExternalApiUnlock();

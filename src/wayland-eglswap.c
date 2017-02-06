@@ -104,18 +104,20 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
     WlEglDisplay      *display = (WlEglDisplay *)eglDisplay;
     WlEglPlatformData *data    = display->data;
     WlEglSurface      *surface = NULL;
-    EGLBoolean         res;
 
     /* Save the internal EGLDisplay handle, as it's needed by the actual
      * eglSwapInterval() call */
     eglDisplay = display->devDpy->eglDisplay;
 
-    res     = data->egl.swapInterval(eglDisplay, interval);
+    if (!(data->egl.swapInterval(eglDisplay, interval))) {
+        return EGL_FALSE;
+    }
+
     surface = (WlEglSurface *)data->egl.getCurrentSurface(EGL_DRAW);
 
     wlExternalApiLock();
 
-    if (res && wlEglIsWlEglSurface(surface)) {
+    if (wlEglIsWlEglSurface(surface)) {
         wl_eglstream_display_swap_interval(display->wlStreamDpy,
                                            surface->ctx.wlStreamResource,
                                            interval);
@@ -126,7 +128,7 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
 
     wlExternalApiUnlock();
 
-    return res;
+    return EGL_TRUE;
 }
 
 EGLint wlEglStreamSwapIntervalCallback(WlEglPlatformData *data,
