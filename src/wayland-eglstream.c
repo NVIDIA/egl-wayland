@@ -23,6 +23,7 @@
 #include "wayland-eglstream-server.h"
 #include "wayland-api-lock.h"
 #include "wayland-eglhandle.h"
+#include "wayland-egldisplay.h"
 #include "wayland-eglutils.h"
 #include "wayland-egl-ext.h"
 #include <unistd.h>
@@ -38,42 +39,25 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
     WlEglPlatformData           *data        = NULL;
     EGLStreamKHR                 stream      = EGL_NO_STREAM_KHR;
     struct wl_eglstream_display *wlStreamDpy = NULL;
+    struct wl_resource          *resource    = NULL;
     struct wl_eglstream         *wlStream    = NULL;
     int                          nAttribs    = 0;
     int                          idx         = 0;
     int                          fd          = -1;
     EGLint                       err         = EGL_SUCCESS;
 
-    wlExternalApiLock();
-
-    wlStreamDpy = wl_eglstream_display_get(dpy);
-    if (wlStreamDpy == NULL) {
-        err = EGL_BAD_ACCESS;
-        goto fail;
-    }
-    data = wlStreamDpy->data;
-
     /* Parse attribute list and count internal attributes */
     while (attribs[idx] != EGL_NONE) {
         if (attribs[idx] == EGL_WAYLAND_EGLSTREAM_WL) {
-            struct wl_resource *resource =
-                (struct wl_resource *)attribs[idx + 1];
-
-            if (wlStream != NULL) {
-                err = EGL_BAD_MATCH;
-                goto fail;
+            if (resource != NULL) {
+                err =  EGL_BAD_MATCH;
+                break;
             }
 
-            wlStream = wl_eglstream_display_get_stream(wlStreamDpy, resource);
-            if (wlStream == NULL) {
+            resource = (struct wl_resource *)attribs[idx + 1];
+            if (resource == NULL) {
                 err = EGL_BAD_ACCESS;
-                goto fail;
-            }
-
-            if (wlStream->eglStream != EGL_NO_STREAM_KHR ||
-                wlStream->handle == -1) {
-                err = EGL_BAD_STREAM_KHR;
-                goto fail;
+                break;
             }
         } else {
             /* Internal attribute */
@@ -82,7 +66,40 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
         idx += 2;
     }
 
-    assert(wlStream != NULL);
+    if ((err == EGL_SUCCESS) && (resource == NULL)) {
+        /* No EGL_WAYLAND_EGLSTREAM_WL attribute provided, which means dpy is
+         * external. Forward this call to the underlying driver as there's
+         * nothing to do here */
+        WlEglDisplay *display = (WlEglDisplay *)dpy;
+        return display->data->egl.createStreamAttrib(display->devDpy->eglDisplay,
+                                                     attribs);
+    }
+
+    /* Otherwise, we must create a server-side stream */
+    wlExternalApiLock();
+
+    wlStreamDpy = wl_eglstream_display_get(dpy);
+    if (wlStreamDpy == NULL) {
+        err = EGL_BAD_ACCESS;
+    } else {
+        data = wlStreamDpy->data;
+    }
+
+    if (err != EGL_SUCCESS) {
+        goto fail;
+    }
+
+    wlStream = wl_eglstream_display_get_stream(wlStreamDpy, resource);
+    if (wlStream == NULL) {
+        err = EGL_BAD_ACCESS;
+        goto fail;
+    }
+
+    if (wlStream->eglStream != EGL_NO_STREAM_KHR ||
+        wlStream->handle == -1) {
+        err = EGL_BAD_STREAM_KHR;
+        goto fail;
+    }
 
     if (wlStream->fromFd) {
         /* Check for EGL_KHR_stream_cross_process_fd support */
