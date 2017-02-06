@@ -2,7 +2,7 @@ AC_PREREQ([2.64])
 
 m4_define([wayland_external_major_version], [1])
 m4_define([wayland_external_minor_version], [0])
-m4_define([wayland_external_micro_version], [0])
+m4_define([wayland_external_micro_version], [1])
 m4_define([wayland_external_version],
           [wayland_external_major_version.wayland_external_minor_version.wayland_external_micro_version])
 
