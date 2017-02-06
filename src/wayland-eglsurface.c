@@ -1029,7 +1029,6 @@ EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
     surf = data->egl.createPbufferSurface(dpy, config, attribs);
 
     if (surf == EGL_NO_SURFACE) {
-        err = data->egl.getError();
         goto fail;
     }
 
@@ -1052,7 +1051,54 @@ EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
     return surface;
 
 fail:
-    wlEglSetError(data, err);
+    if (err != EGL_SUCCESS) {
+        wlEglSetError(data, err);
+    }
+    return EGL_NO_SURFACE;
+}
+
+EGLSurface wlEglCreateStreamProducerSurfaceHook(EGLDisplay dpy,
+                                                EGLConfig config,
+                                                EGLStreamKHR stream,
+                                                const EGLint *attribs)
+{
+    WlEglDisplay      *display = (WlEglDisplay*)dpy;
+    WlEglPlatformData *data    = display->data;
+    WlEglSurface      *surface = NULL;
+    EGLSurface         surf    = EGL_NO_SURFACE;
+    EGLint             err     = EGL_SUCCESS;
+
+    /* Nothing really special needs to be done. Just fall back to the driver's
+     * stream producer surface creation function */
+    dpy = display->devDpy->eglDisplay;
+    surf = data->egl.createStreamProducerSurface(dpy, config, stream, attribs);
+
+    if (surf == EGL_NO_SURFACE) {
+        goto fail;
+    }
+
+    surface = calloc(1, sizeof(*surface));
+    if (!surface) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    surface->wlEglDpy = display;
+    surface->eglConfig = config;
+    surface->ctx.eglSurface = surf;
+    surface->ctx.isOffscreen = EGL_TRUE;
+    wl_list_init(&surface->oldCtxList);
+
+    wlExternalApiLock();
+    wl_list_insert(&wlEglSurfaceList, &surface->link);
+    wlExternalApiUnlock();
+
+    return surface;
+
+fail:
+    if (err != EGL_SUCCESS) {
+        wlEglSetError(data, err);
+    }
     return EGL_NO_SURFACE;
 }
 

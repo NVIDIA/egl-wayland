@@ -38,20 +38,21 @@ typedef struct WlEglHookRec {
 
 static const WlEglHook wlEglHooksMap[] = {
     /* Keep names in ascending order */
-    { "eglBindWaylandDisplayWL",        wlEglBindDisplaysHook },
-    { "eglChooseConfig",                wlEglChooseConfigHook },
-    { "eglCreatePbufferSurface",        wlEglCreatePbufferSurfaceHook },
-    { "eglCreatePlatformPixmapSurface", wlEglCreatePlatformPixmapSurfaceHook },
-    { "eglCreatePlatformWindowSurface", wlEglCreatePlatformWindowSurfaceHook },
-    { "eglCreateStreamAttribNV",        wlEglCreateStreamAttribHook },
-    { "eglDestroySurface",              wlEglDestroySurfaceHook },
-    { "eglGetConfigAttrib",             wlEglGetConfigAttribHook },
-    { "eglInitialize",                  wlEglInitializeHook },
-    { "eglQueryWaylandBufferWL",        wlEglQueryNativeResourceHook },
-    { "eglSwapBuffers",                 wlEglSwapBuffersHook },
-    { "eglSwapInterval",                wlEglSwapIntervalHook },
-    { "eglTerminate",                   wlEglTerminateHook },
-    { "eglUnbindWaylandDisplayWL",      wlEglUnbindDisplaysHook },
+    { "eglBindWaylandDisplayWL",           wlEglBindDisplaysHook },
+    { "eglChooseConfig",                   wlEglChooseConfigHook },
+    { "eglCreatePbufferSurface",           wlEglCreatePbufferSurfaceHook },
+    { "eglCreatePlatformPixmapSurface",    wlEglCreatePlatformPixmapSurfaceHook },
+    { "eglCreatePlatformWindowSurface",    wlEglCreatePlatformWindowSurfaceHook },
+    { "eglCreateStreamAttribNV",           wlEglCreateStreamAttribHook },
+    { "eglCreateStreamProducerSurfaceKHR", wlEglCreateStreamProducerSurfaceHook },
+    { "eglDestroySurface",                 wlEglDestroySurfaceHook },
+    { "eglGetConfigAttrib",                wlEglGetConfigAttribHook },
+    { "eglInitialize",                     wlEglInitializeHook },
+    { "eglQueryWaylandBufferWL",           wlEglQueryNativeResourceHook },
+    { "eglSwapBuffers",                    wlEglSwapBuffersHook },
+    { "eglSwapInterval",                   wlEglSwapIntervalHook },
+    { "eglTerminate",                      wlEglTerminateHook },
+    { "eglUnbindWaylandDisplayWL",         wlEglUnbindDisplaysHook },
 };
 
 static int hookCmp(const void *elemA, const void *elemB)

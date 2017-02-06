@@ -84,6 +84,10 @@ EGLSurface wlEglCreatePlatformPixmapSurfaceHook(EGLDisplay dpy,
 EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
                                          EGLConfig config,
                                          const EGLint *attribs);
+EGLSurface wlEglCreateStreamProducerSurfaceHook(EGLDisplay dpy,
+                                                EGLConfig config,
+                                                EGLStreamKHR stream,
+                                                const EGLint *attribs);
 EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface);
 EGLBoolean wlEglDestroyAllSurfaces(WlEglDisplay *display);
 
