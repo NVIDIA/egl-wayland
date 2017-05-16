@@ -279,6 +279,12 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
     struct wl_eglstream_display *wlStreamDpy = NULL;
     const char                  *exts        = NULL;
 
+    /* Check whether there's an EGLDisplay already bound to the given
+     * wl_display */
+    if (wl_eglstream_display_get(eglDisplay) != NULL) {
+        return NULL;
+    }
+
     wlStreamDpy = malloc(sizeof(*wlStreamDpy));
     if (!wlStreamDpy) {
         return NULL;
