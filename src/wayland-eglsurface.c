@@ -22,6 +22,7 @@
 
 #include "wayland-eglsurface.h"
 #include "wayland-eglstream-client-protocol.h"
+#include "wayland-eglstream-controller-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-api-lock.h"
 #include "wayland-eglutils.h"
@@ -128,6 +129,7 @@ wlEglSendDamageEvent(WlEglSurface *surface)
     wl_surface_damage(surface->wlEglWin->surface, 0, 0,
                       surface->width, surface->height);
     wl_surface_commit(surface->wlEglWin->surface);
+    surface->ctx.isAttached = EGL_TRUE;
     return (wlEglRoundtrip(surface->wlEglDpy,
             surface->wlEglDpy->wlDamageEventQueue) >= 0) ? EGL_TRUE : EGL_FALSE;
 }
@@ -662,11 +664,27 @@ create_surface_context(WlEglSurface *surface)
 
     /* Then attach the wl_eglstream so the compositor connects a consumer to the
      * EGLStream */
-    wl_surface_attach(window->surface,
-                      surface->ctx.wlStreamResource,
-                      window->dx,
-                      window->dy);
-    wl_surface_commit(window->surface);
+    if (display->wlStreamCtl != NULL) {
+        wl_eglstream_controller_attach_eglstream_consumer(
+                                                display->wlStreamCtl,
+                                                window->surface,
+                                                surface->ctx.wlStreamResource);
+    } else {
+        wl_surface_attach(window->surface,
+                          surface->ctx.wlStreamResource,
+                          window->dx,
+                          window->dy);
+        wl_surface_commit(window->surface);
+
+        /* Since we are using the legacy method of overloading wl_surface_attach
+         * in order to create the server-side EGLStream here, the compositor
+         * will actually take this as a new buffer. We mark it as 'attached'
+         * because whenever a new wl_surface_attach request is issued, the
+         * compositor will emit back a wl_buffer_release event, and we will
+         * destroy the context then. */
+        surface->ctx.isAttached = EGL_TRUE;
+    }
+
     wl_proxy_set_queue((struct wl_proxy *)window->surface, display->wlQueue);
     if (wlEglRoundtrip(display, display->wlQueue) < 0) {
         err = EGL_BAD_ALLOC;
@@ -746,14 +764,22 @@ resize_callback(struct wl_egl_window *window, void *data)
         //   pending frames
         finish_wl_eglstream_damage_thread(surface, &surface->ctx, 0);
 
-        /* Defer surface context destruction until we make sure compositor
-         * doesn't need it anymore (i.e. upon stream release) */
-        ctx = malloc(sizeof(WlEglSurfaceCtx));
-        if (ctx) {
-            memcpy(ctx, &surface->ctx, sizeof(*ctx));
-            wl_list_insert(&surface->oldCtxList, &ctx->link);
+        /* If the surface context is marked as attached, it means the compositor
+         * might still be using the resources because some content was actually
+         * displayed. In that case, defer its destruction until we make sure the
+         * compositor doesn't need it anymore (i.e. upon stream release);
+         * otherwise, we can just destroy it right away */
+        if (surface->ctx.isAttached) {
+            ctx = malloc(sizeof(WlEglSurfaceCtx));
+            if (ctx) {
+                memcpy(ctx, &surface->ctx, sizeof(*ctx));
+                wl_list_insert(&surface->oldCtxList, &ctx->link);
+            }
+        } else {
+            destroy_surface_context(surface, &surface->ctx);
         }
         surface->ctx.wlStreamResource = NULL;
+        surface->ctx.isAttached = EGL_FALSE;
         surface->ctx.eglSurface = EGL_NO_SURFACE;
         surface->ctx.eglStream = EGL_NO_STREAM_KHR;
         surface->ctx.damageThreadSync = EGL_NO_SYNC_KHR;

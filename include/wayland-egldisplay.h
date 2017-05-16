@@ -50,11 +50,12 @@ typedef struct WlEglDisplayRec {
 
     // wlQueue is used by main thread along with  display sync points or frame syncpoint
     // depending upon where it is used
-    struct wl_event_queue       *wlQueue;
+    struct wl_event_queue          *wlQueue;
     // wlDamageEventQueue is only used by damage_thread along with display sync points
-    struct wl_event_queue       *wlDamageEventQueue;
-    struct wl_registry          *wlRegistry;
-    struct wl_eglstream_display *wlStreamDpy;
+    struct wl_event_queue          *wlDamageEventQueue;
+    struct wl_registry             *wlRegistry;
+    struct wl_eglstream_display    *wlStreamDpy;
+    struct wl_eglstream_controller *wlStreamCtl;
     struct {
         unsigned int stream_fd     : 1;
         unsigned int stream_inet   : 1;

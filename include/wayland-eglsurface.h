@@ -39,6 +39,7 @@ typedef struct WlEglSurfaceCtxRec {
     EGLSurface    eglSurface;
     EGLStreamKHR  eglStream;
     void         *wlStreamResource;
+    EGLBoolean    isAttached;
 
     int          useDamageThread;
     pthread_t    damageThreadId;

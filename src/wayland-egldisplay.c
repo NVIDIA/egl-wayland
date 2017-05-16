@@ -22,6 +22,7 @@
 
 #include "wayland-egldisplay.h"
 #include "wayland-eglstream-client-protocol.h"
+#include "wayland-eglstream-controller-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-api-lock.h"
 #include "wayland-eglsurface.h"
@@ -110,6 +111,12 @@ registry_handle_global(void *data,
         display->wlStreamDpy = wl_registry_bind(registry,
                                                 name,
                                                 &wl_eglstream_display_interface,
+                                                version);
+    }
+    if (strcmp(interface, "wl_eglstream_controller") == 0) {
+        display->wlStreamCtl = wl_registry_bind(registry,
+                                                name,
+                                                &wl_eglstream_controller_interface,
                                                 version);
     }
 }
