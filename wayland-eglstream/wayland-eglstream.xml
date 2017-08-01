@@ -38,9 +38,6 @@
     <!-- wl_buffer handle types. This enum defines what the handle given to a
          create_stream request represents -->
     <enum name="handle_type">
-      <entry name="fd" value="0" summary="File descriptor"/>
-      <entry name="inet" value="1" summary="Inet connection"/>
-      <entry name="socket" value="2" summary="Unix socket"/>
       <description summary="Stream handle type">
           - fd:     The given handle represents a file descriptor, and the
                     EGLStream connection must be done as described in
@@ -54,13 +51,14 @@
           - socket: The given handle represents a unix socket, and the EGLStream
                     connection must be done as described in EGL_NV_stream_socket.
       </description>
+      <entry name="fd" value="0" summary="File descriptor"/>
+      <entry name="inet" value="1" summary="Inet connection"/>
+      <entry name="socket" value="2" summary="Unix socket"/>
     </enum>
 
     <!-- EGLStream creation attributes. This enum defines possible attributes to
          be passed to a create_stream request -->
     <enum name="attrib">
-      <entry name="inet_addr" value="0" summary="Inet IPv4 address"/>
-      <entry name="inet_port" value="1" summary="IP port"/>
       <description summary="Stream creation attributes">
         - inet_addr: The given attribute encodes an IPv4 address of a client
                      socket. Both IPv4 address and port must be set at the same
@@ -69,6 +67,8 @@
         - inet_port: The given attribute encodes a port of a client socket. Both
                      IPv4 address and port must be set at the same time.
       </description>
+      <entry name="inet_addr" value="0" summary="Inet IPv4 address"/>
+      <entry name="inet_port" value="1" summary="IP port"/>
     </enum>
   </interface>
 
@@ -80,9 +80,6 @@
          capability flags that will be advertised by the server to all its
          clients -->
     <enum name="cap">
-      <entry name="stream_fd" value="1" summary="Stream connection with FD"/>
-      <entry name="stream_inet" value="2" summary="Stream inet connection"/>
-      <entry name="stream_socket" value="4" summary="Stream unix connection"/>
       <description summary="wl_eglstream_display capability codes">
         This enum values should be used as bit masks.
 
@@ -95,6 +92,9 @@
         - stream_socket: The server supports EGLStream unix socket connections
                          as described in EGL_NV_stream_socket.
       </description>
+      <entry name="stream_fd" value="1" summary="Stream connection with FD"/>
+      <entry name="stream_inet" value="2" summary="Stream inet connection"/>
+      <entry name="stream_socket" value="4" summary="Stream unix connection"/>
     </enum>
 
     <!-- Advertise server capabilities as a bit mask. Clients might listen to
