@@ -3,10 +3,10 @@
 lib_LTLIBRARIES = libnvidia-egl-wayland.la
 
 # Include paths
-libnvidia_egl_wayland_la_CFLAGS =     \
-    -I$(top_srcdir)/wayland-egl       \
-    -I$(top_srcdir)/wayland-eglstream \
-    -I$(top_srcdir)/include
+libnvidia_egl_wayland_la_CFLAGS =       \
+    -I$(top_srcdir)/wayland-egl         \
+    -I$(top_srcdir)/include             \
+    -I$(top_builddir)/wayland-eglstream
 
 # Required library flags
 libnvidia_egl_wayland_la_CFLAGS += \
@@ -23,8 +23,6 @@ libnvidia_egl_wayland_la_LDFLAGS =                                              
     $(LINKER_FLAG_NO_UNDEFINED)
 
 libnvidia_egl_wayland_la_SOURCES =                            \
-    wayland-eglstream/wayland-eglstream-protocol.c            \
-    wayland-eglstream/wayland-eglstream-controller-protocol.c \
     src/wayland-api-lock.c                                    \
     src/wayland-egldisplay.c                                  \
     src/wayland-eglstream.c                                   \
@@ -34,3 +32,24 @@ libnvidia_egl_wayland_la_SOURCES =                            \
     src/wayland-eglutils.c                                    \
     src/wayland-eglhandle.c                                   \
     src/wayland-external-exports.c
+
+libnvidia_egl_wayland_la_built_sources =                             \
+    wayland-eglstream/wayland-eglstream-protocol.c                   \
+    wayland-eglstream/wayland-eglstream-client-protocol.h            \
+    wayland-eglstream/wayland-eglstream-server-protocol.h            \
+    wayland-eglstream/wayland-eglstream-controller-protocol.c        \
+    wayland-eglstream/wayland-eglstream-controller-client-protocol.h
+
+nodist_libnvidia_egl_wayland_la_SOURCES = $(libnvidia_egl_wayland_la_built_sources)
+CLEANFILES = $(libnvidia_egl_wayland_la_built_sources)
+
+$(libnvidia_egl_wayland_la_SOURCES): $(libnvidia_egl_wayland_la_built_sources)
+
+%-protocol.c : %.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) code < $< > $@
+
+%-client-protocol.h : %.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) client-header < $< > $@
+
+%-server-protocol.h : %.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) server-header < $< > $@
