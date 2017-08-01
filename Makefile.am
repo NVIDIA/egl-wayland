@@ -9,16 +9,16 @@ libnvidia_egl_wayland_la_CFLAGS =       \
     -I$(top_builddir)/wayland-eglstream
 
 # Required library flags
-libnvidia_egl_wayland_la_CFLAGS += \
-    $(PTHREAD_CFLAGS)              \
-    $(EGL_EXTERNAL_PLATFORM_CFLAGS)
+libnvidia_egl_wayland_la_CFLAGS +=  \
+    $(PTHREAD_CFLAGS)               \
+    $(EGL_EXTERNAL_PLATFORM_CFLAGS) \
+    $(WAYLAND_CFLAGS)
 
 libnvidia_egl_wayland_la_LDFLAGS =                                                                                        \
     -shared                                                                                                               \
     -Wl,-Bsymbolic                                                                                                        \
     -ldl                                                                                                                  \
-    -lwayland-server                                                                                                      \
-    -lwayland-client                                                                                                      \
+    $(WAYLAND_LIBS)                                                                                                       \
     -version-number $(WAYLAND_EXTERNAL_MAJOR_VERSION):$(WAYLAND_EXTERNAL_MINOR_VERSION):$(WAYLAND_EXTERNAL_MICRO_VERSION) \
     $(LINKER_FLAG_NO_UNDEFINED)
 
