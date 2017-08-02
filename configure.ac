@@ -32,17 +32,26 @@ AM_INIT_AUTOMAKE([1.11 foreign subdir-objects])
 
 AM_SILENT_RULES([yes])
 
+PKG_PROG_PKG_CONFIG()
+
 # Checks for programs.
 AC_PROG_CC
 AC_PROG_CXX
 AM_PROG_AS
 AC_PROG_LIBTOOL
 
+AC_ARG_VAR([WAYLAND_SCANNER], [The wayland-scanner executable])
+AC_PATH_PROG([WAYLAND_SCANNER], [wayland-scanner])
+
+# User didn't specify wayland-scanner location manually, so find it ourselves
+if test x$WAYLAND_SCANNER = x; then
+    PKG_CHECK_MODULES(WAYLAND_SCANNER, [wayland-scanner])
+    WAYLAND_SCANNER=`$PKG_CONFIG --variable=wayland_scanner wayland-scanner`
+fi
+
 # Initialize libtool
 LT_PREREQ([2.2])
 LT_INIT
-
-PKG_PROG_PKG_CONFIG()
 
 # Checks for libraries.
 AX_PTHREAD()
