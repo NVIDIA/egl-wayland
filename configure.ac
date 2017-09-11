@@ -83,6 +83,9 @@ AX_CHECK_LINK_FLAG([-Xlinker --no-undefined],
 CFLAGS="$CFLAGS -Wall -Wno-deprecated-declarations -Werror -include config.h"
 
 AC_CONFIG_FILES([Makefile])
+
+PKG_NOARCH_INSTALLDIR
+
 AC_OUTPUT
 
 AC_MSG_RESULT([
