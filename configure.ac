@@ -1,13 +1,13 @@
 AC_PREREQ([2.64])
 
-m4_define([wayland_external_major_version], [1])
-m4_define([wayland_external_minor_version], [0])
-m4_define([wayland_external_micro_version], [2])
-m4_define([wayland_external_version],
-          [wayland_external_major_version.wayland_external_minor_version.wayland_external_micro_version])
+m4_define([wayland_eglstream_major_version], [1])
+m4_define([wayland_eglstream_minor_version], [0])
+m4_define([wayland_eglstream_micro_version], [2])
+m4_define([wayland_eglstream_version],
+          [wayland_eglstream_major_version.wayland_eglstream_minor_version.wayland_eglstream_micro_version])
 
-AC_INIT([wayland_external],
-        [wayland_external_version],
+AC_INIT([wayland-eglstream],
+        [wayland_eglstream_version],
         [mvicomoya@nvidia.com])
 
 AC_CONFIG_MACRO_DIR([m4])
@@ -15,10 +15,10 @@ AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
 
-AC_SUBST([WAYLAND_EXTERNAL_MAJOR_VERSION], [wayland_external_major_version])
-AC_SUBST([WAYLAND_EXTERNAL_MINOR_VERSION], [wayland_external_minor_version])
-AC_SUBST([WAYLAND_EXTERNAL_MICRO_VERSION], [wayland_external_micro_version])
-AC_SUBST([WAYLAND_EXTERNAL_VERSION], [wayland_external_version])
+AC_SUBST([WAYLAND_EXTERNAL_MAJOR_VERSION], [wayland_eglstream_major_version])
+AC_SUBST([WAYLAND_EXTERNAL_MINOR_VERSION], [wayland_eglstream_minor_version])
+AC_SUBST([WAYLAND_EXTERNAL_MICRO_VERSION], [wayland_eglstream_micro_version])
+AC_SUBST([WAYLAND_EXTERNAL_VERSION], [wayland_eglstream_version])
 
 AC_SUBST([EGL_EXTERNAL_PLATFORM_MIN_VERSION], [${WAYLAND_EXTERNAL_MAJOR_VERSION}.${WAYLAND_EXTERNAL_MINOR_VERSION}])
 AC_SUBST([EGL_EXTERNAL_PLATFORM_MAX_VERSION], [$(($WAYLAND_EXTERNAL_MAJOR_VERSION + 1))])
