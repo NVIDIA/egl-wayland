@@ -41,11 +41,20 @@ libnvidia_egl_wayland_la_built_sources =                             \
     wayland-eglstream/wayland-eglstream-controller-client-protocol.h
 
 nodist_libnvidia_egl_wayland_la_SOURCES = $(libnvidia_egl_wayland_la_built_sources)
-CLEANFILES = $(libnvidia_egl_wayland_la_built_sources)
 
 dist_pkgdata_DATA =                                    \
     wayland-eglstream/wayland-eglstream.xml            \
     wayland-eglstream/wayland-eglstream-controller.xml
+
+wayland_eglstream_pkgconfig_files = \
+    wayland-eglstream.pc            \
+    wayland-eglstream-protocols.pc
+
+noarch_pkgconfig_DATA = $(wayland_eglstream_pkgconfig_files)
+
+CLEANFILES =                                  \
+    $(libnvidia_egl_wayland_la_built_sources) \
+    $(wayland_eglstream_pkgconfig_files)
 
 $(libnvidia_egl_wayland_la_SOURCES): $(libnvidia_egl_wayland_la_built_sources)
 

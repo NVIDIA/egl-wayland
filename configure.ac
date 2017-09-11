@@ -82,10 +82,13 @@ AX_CHECK_LINK_FLAG([-Xlinker --no-undefined],
 # Default CFLAGS
 CFLAGS="$CFLAGS -Wall -Wno-deprecated-declarations -Werror -include config.h"
 
-AC_CONFIG_FILES([Makefile])
-
 PKG_NOARCH_INSTALLDIR
 
+AC_CONFIG_FILES([
+    wayland-eglstream.pc
+    wayland-eglstream-protocols.pc
+    Makefile
+    ])
 AC_OUTPUT
 
 AC_MSG_RESULT([
