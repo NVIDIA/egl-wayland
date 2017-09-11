@@ -43,6 +43,10 @@ libnvidia_egl_wayland_la_built_sources =                             \
 nodist_libnvidia_egl_wayland_la_SOURCES = $(libnvidia_egl_wayland_la_built_sources)
 CLEANFILES = $(libnvidia_egl_wayland_la_built_sources)
 
+dist_pkgdata_DATA =                                    \
+    wayland-eglstream/wayland-eglstream.xml            \
+    wayland-eglstream/wayland-eglstream-controller.xml
+
 $(libnvidia_egl_wayland_la_SOURCES): $(libnvidia_egl_wayland_la_built_sources)
 
 %-protocol.c : %.xml
