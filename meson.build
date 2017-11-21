@@ -72,10 +72,8 @@ foreach f : check_functions
   endif
 endforeach
 
-configure_file(
-    output : 'config.h',
-    configuration : cdata
-)
+configure_file(output : 'config.h', configuration : cdata)
+add_project_arguments('-include', 'config.h', language : 'c')
 
 pkgconf = configuration_data()
 pkgconf.set('prefix',      get_option('prefix'))
