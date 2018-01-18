@@ -30,6 +30,7 @@
 #include "wayland-eglutils.h"
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
 /* TODO: Make global display lists hang off platform data */
 static struct wl_list wlEglDisplayList   = WL_LIST_INIT(&wlEglDisplayList);
@@ -275,7 +276,9 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy)
     }
 
     /* Destroy the external display */
-    wl_list_remove(&display->link);
+    if (display->link.prev && display->link.next) {
+        wl_list_remove(&display->link);
+    }
     free(display);
 
     /* XXX: Currently, we assume an internal EGLDisplay will only be used by a
@@ -313,7 +316,9 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 {
     WlEglPlatformData *pData        = (WlEglPlatformData *)data;
     WlEglDeviceDpy    *devDpy       = NULL;
+    WlEglDeviceDpy    *tmpDpy       = NULL;
     WlEglDisplay      *display      = NULL;
+    WlEglDisplay      *dpy          = NULL;
     EGLBoolean         ownNativeDpy = EGL_FALSE;
     EGLint             numDevices   = 0;
     int                ret          = 0;
@@ -353,8 +358,6 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         goto fail;
     }
 
-    wl_list_insert(&wlEglDisplayList, &display->link);
-
     display->data = pData;
 
     display->ownNativeDpy = ownNativeDpy;
@@ -371,6 +374,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 
     ret = wlEglRoundtrip(display, display->wlQueue);
     if (ret < 0 || !display->wlStreamDpy) {
+        wlExternalApiUnlock();
         goto fail;
     }
 
@@ -383,17 +387,13 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                                       display);
     ret = wlEglRoundtrip(display, display->wlQueue);
     if (ret < 0) {
+        wlExternalApiUnlock();
         goto fail;
     }
 
     /* Restore global registry default queue as other clients may rely on it and
        we are no longer interested in registry events */
     wl_proxy_set_queue((struct wl_proxy *)display->wlRegistry, NULL);
-
-    /* Get number of available EGL devices */
-    if (!pData->egl.queryDevices(0, NULL, &numDevices) || numDevices == 0) {
-        goto fail;
-    }
 
     /*
      * Seek for the desired device in wlEglDeviceDpyList. If found, use it;
@@ -402,16 +402,19 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     wl_list_for_each(devDpy, &wlEglDeviceDpyList, link) {
         /* TODO: Add support for multiple devices/device selection */
         display->devDpy = devDpy;
+        display->devDpy->refCount++;
         break;
     }
 
     if (!display->devDpy) {
+        wlExternalApiUnlock();
+
         devDpy = calloc(1, sizeof(*devDpy));
         if (!devDpy) {
             goto fail;
         }
 
-        if (!pData->egl.queryDevices(1, &devDpy->eglDevice, &numDevices)) {
+        if (!pData->egl.queryDevices(1, &devDpy->eglDevice, &numDevices) || numDevices == 0) {
             goto fail;
         }
 
@@ -423,20 +426,60 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         if (devDpy->eglDisplay == EGL_NO_DISPLAY) {
             goto fail;
         }
-
-        wl_list_insert(&wlEglDeviceDpyList, &devDpy->link);
-
-        display->devDpy = devDpy;
+        wlExternalApiLock();
     }
 
-    display->devDpy->refCount++;
+    // Due to temporary unlock of wlMutex in wlEglRoundtrip, it is possible
+    // that two or more threads enter wlEglGetPlatformDisplayExport simultaneously.
+    // Before inserting display in wlEglDisplayList, we need to check whether
+    // while we were unlocked, other thread already inserted the display which
+    // has the same nativeDpy. If so, we need to free allocations and return
+    // the already inserted display.
+    wl_list_for_each(dpy, &wlEglDisplayList, link) {
+        if (dpy->nativeDpy == display->nativeDpy) {
+            // If display->devDpy is NULL, we just allocated devDpy, need to free it.
+            if (!display->devDpy) {
+                free(devDpy);
+            }
+
+            terminateDisplay(display);
+
+            wlExternalApiUnlock();
+            return (EGLDisplay)dpy;
+        }
+    }
+
+    // If no device found in wlEglDeviceDpyList, insert the newly created
+    // WlEglDeviceDpy into wlEglDeviceDpyList.
+    if (!display->devDpy) {
+        assert(devDpy);
+        // Given that different wayland EGLDisplays may share the same devDpy,
+        // it could happen that someone else creating a different display
+        // already created the devDpy. We need to check it does not exist yet
+        // before inserting, and if it does, free devDpy.
+        wl_list_for_each(tmpDpy, &wlEglDeviceDpyList, link) {
+            /* TODO: Add support for multiple devices/device selection */
+            display->devDpy = tmpDpy;
+            free (devDpy);
+            break;
+        }
+
+        if (!display->devDpy) {
+            wl_list_insert(&wlEglDeviceDpyList, &devDpy->link);
+            display->devDpy = devDpy;
+        }
+
+        display->devDpy->refCount++;
+    }
+
+    // The newly created WlEglDisplay has been set up properly, insert it
+    // in wlEglDisplayList.
+    wl_list_insert(&wlEglDisplayList, &display->link);
 
     wlExternalApiUnlock();
     return display;
 
 fail:
-    wlExternalApiUnlock();
-
     if (display) {
         wlEglTerminateHook(display);
     } else if (ownNativeDpy) {
