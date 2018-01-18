@@ -59,6 +59,8 @@ typedef struct WlEglSurfaceRec {
     EGLint       *attribs;
 
     struct wl_egl_window *wlEglWin;
+    long int              wlEglWinVer;
+    struct wl_surface    *wlSurface;
     int                   width, height;
     int                   dx,    dy;
 
