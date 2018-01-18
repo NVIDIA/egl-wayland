@@ -133,7 +133,7 @@ void wlEglSetErrorCallback(WlEglPlatformData *data,
                            const char *file,
                            int line)
 {
-    if (data->callbacks.setError) {
+    if (data && data->callbacks.setError) {
         const char *defaultMsg = "Wayland external platform error";
 
         if (file != NULL) {

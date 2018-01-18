@@ -73,7 +73,7 @@ EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy)
 
     res = wl_eglstream_display_bind((WlEglPlatformData *)data,
                                     (struct wl_display *)nativeDpy,
-                                    dpy) ? EGL_TRUE : EGL_FALSE;
+                                    dpy);
 
     wlExternalApiUnlock();
 
@@ -160,25 +160,19 @@ eglstream_display_handle_swapinterval_override(
                                     int32_t swapinterval,
                                     struct wl_buffer *streamResource)
 {
-    WlEglSurface      *surf  = NULL;
-    WlEglPlatformData *pData = NULL;
-    EGLDisplay         dpy   = EGL_NO_DISPLAY;
+    WlEglSurface *surf = NULL;
 
     wl_list_for_each(surf, &wlEglSurfaceList, link) {
         if (surf->ctx.wlStreamResource == streamResource) {
-           break;
+            WlEglPlatformData *pData = surf->wlEglDpy->data;
+            EGLDisplay         dpy   = surf->wlEglDpy->devDpy->eglDisplay;
+
+            if (pData->egl.swapInterval(dpy, swapinterval)) {
+                surf->swapInterval = swapinterval;
+            }
+
+            break;
         }
-    }
-
-    if (surf == NULL) {
-        return;
-    }
-
-    pData = surf->wlEglDpy->data;
-    dpy   = surf->wlEglDpy->devDpy->eglDisplay;
-
-    if (pData->egl.swapInterval(dpy, swapinterval)) {
-        surf->swapInterval = swapinterval;
     }
 }
 
@@ -207,8 +201,8 @@ int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
     int ret = 0, done = 0;
 
     callback = wl_display_sync(display->nativeDpy);
-    wl_callback_add_listener(callback, &sync_listener, &done);
-    wl_proxy_set_queue((struct wl_proxy *) callback, queue);
+    wl_proxy_set_queue((struct wl_proxy *)callback, queue);
+    ret = wl_callback_add_listener(callback, &sync_listener, &done);
 
     while (ret != -1 && !done) {
         /* We are handing execution control over to Wayland here, so we need to
@@ -370,9 +364,12 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display->wlRegistry = wl_display_get_registry(nativeDpy);
     wl_proxy_set_queue((struct wl_proxy *)display->wlRegistry,
                         display->wlQueue);
-    wl_registry_add_listener(display->wlRegistry, &registry_listener, display);
-
-    ret = wlEglRoundtrip(display, display->wlQueue);
+    ret = wl_registry_add_listener(display->wlRegistry,
+                                   &registry_listener,
+                                   display);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, display->wlQueue);
+    }
     if (ret < 0 || !display->wlStreamDpy) {
         wlExternalApiUnlock();
         goto fail;
@@ -382,10 +379,12 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
      * catch any bind-related event (e.g. server capabilities) */
     wl_proxy_set_queue((struct wl_proxy *)display->wlStreamDpy,
                        display->wlQueue);
-    wl_eglstream_display_add_listener(display->wlStreamDpy,
-                                      &eglstream_display_listener,
-                                      display);
-    ret = wlEglRoundtrip(display, display->wlQueue);
+    ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
+                                            &eglstream_display_listener,
+                                            display);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, display->wlQueue);
+    }
     if (ret < 0) {
         wlExternalApiUnlock();
         goto fail;
@@ -544,12 +543,13 @@ EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
                                  EGLint configSize,
                                  EGLint *numConfig)
 {
-    WlEglDisplay      *display  = (WlEglDisplay *)dpy;
-    WlEglPlatformData *data     = display->data;
-    EGLint            *attribs2 = NULL;
-    EGLint             nAttribs = 0;
-    EGLBoolean         surfType = EGL_FALSE;
-    EGLint             err      = EGL_SUCCESS;
+    WlEglDisplay      *display       = (WlEglDisplay *)dpy;
+    WlEglPlatformData *data          = display->data;
+    EGLint            *attribs2      = NULL;
+    EGLint             nAttribs      = 0;
+    EGLint             nTotalAttribs = 0;
+    EGLBoolean         surfType      = EGL_FALSE;
+    EGLint             err           = EGL_SUCCESS;
     EGLBoolean         ret;
 
     /* Save the internal EGLDisplay handle, as it's needed by the actual
@@ -566,17 +566,19 @@ EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
 
     /* If not SURFACE_TYPE provided, we need convert the default WINDOW_BIT to a
      * default EGL_STREAM_BIT */
-    nAttribs += (surfType ? 0 : 2);
+    nTotalAttribs += (surfType ? nAttribs : (nAttribs + 2));
 
     /* Make attributes list copy */
-    attribs2 = (EGLint *)malloc((nAttribs + 1) * sizeof(*attribs2));
+    attribs2 = (EGLint *)malloc((nTotalAttribs + 1) * sizeof(*attribs2));
     if (!attribs2) {
         err = EGL_BAD_ALLOC;
         goto done;
     }
 
-    memcpy(attribs2, attribs, nAttribs * sizeof(*attribs2));
-    attribs2[nAttribs] = EGL_NONE;
+    if (nAttribs > 0) {
+        memcpy(attribs2, attribs, nAttribs * sizeof(*attribs2));
+    }
+    attribs2[nTotalAttribs] = EGL_NONE;
 
     /* Replace all WINDOW_BITs by EGL_STREAM_BITs */
     if (surfType) {
@@ -591,8 +593,8 @@ EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
             nAttribs += 2;
         }
     } else {
-        attribs2[nAttribs - 2] = EGL_SURFACE_TYPE;
-        attribs2[nAttribs - 1] = EGL_STREAM_BIT_KHR;
+        attribs2[nTotalAttribs - 2] = EGL_SURFACE_TYPE;
+        attribs2[nTotalAttribs - 1] = EGL_STREAM_BIT_KHR;
     }
 
     /* Actual eglChooseConfig() call */

@@ -47,23 +47,25 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
     EGLint                       err         = EGL_SUCCESS;
 
     /* Parse attribute list and count internal attributes */
-    while (attribs[idx] != EGL_NONE) {
-        if (attribs[idx] == EGL_WAYLAND_EGLSTREAM_WL) {
-            if (resource != NULL) {
-                err =  EGL_BAD_MATCH;
-                break;
-            }
+    if (attribs) {
+        while (attribs[idx] != EGL_NONE) {
+            if (attribs[idx] == EGL_WAYLAND_EGLSTREAM_WL) {
+                if (resource != NULL) {
+                    err =  EGL_BAD_MATCH;
+                    break;
+                }
 
-            resource = (struct wl_resource *)attribs[idx + 1];
-            if (resource == NULL) {
-                err = EGL_BAD_ACCESS;
-                break;
+                resource = (struct wl_resource *)attribs[idx + 1];
+                if (resource == NULL) {
+                    err = EGL_BAD_ACCESS;
+                    break;
+                }
+            } else {
+                /* Internal attribute */
+                nAttribs++;
             }
-        } else {
-            /* Internal attribute */
-            nAttribs++;
+            idx += 2;
         }
-        idx += 2;
     }
 
     if ((err == EGL_SUCCESS) && (resource == NULL)) {

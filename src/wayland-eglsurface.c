@@ -94,10 +94,12 @@ void wlEglCreateFrameSync(WlEglSurface *surface, struct wl_event_queue *queue)
 {
     if (surface->swapInterval > 0) {
         surface->throttleCallback = wl_surface_frame(surface->wlSurface);
-        wl_callback_add_listener(surface->throttleCallback,
-                                 &throttle_listener, surface);
-        wl_proxy_set_queue((struct wl_proxy *) surface->throttleCallback,
-                            queue);
+        if (wl_callback_add_listener(surface->throttleCallback,
+                                     &throttle_listener, surface) == -1) {
+            return;
+        }
+        wl_proxy_set_queue((struct wl_proxy *)surface->throttleCallback,
+                           queue);
         wl_surface_commit(surface->wlSurface);
 
     }
@@ -299,6 +301,7 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
 
     if (stream != EGL_NO_STREAM_KHR) {
         data->egl.destroyStream(dpy, stream);
+        ctx->eglStream = EGL_NO_STREAM_KHR;
     }
 
     if (resource) {
@@ -382,11 +385,14 @@ static EGLint create_surface_stream_fd(WlEglSurface *surface)
         goto fail;
     }
 
+    if (wl_buffer_add_listener(surface->ctx.wlStreamResource,
+                               &wl_buffer_listener,
+                               surface) == -1) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
     wl_proxy_set_queue((struct wl_proxy *)surface->ctx.wlStreamResource,
                         display->wlQueue);
-    wl_buffer_add_listener(surface->ctx.wlStreamResource,
-                           &wl_buffer_listener,
-                           surface);
 
     /* Clean-up */
     close(handle);
@@ -418,7 +424,7 @@ static EGLint startInetHandshake(pthread_t *thread,
                                  int *clientSocket,
                                  int *port)
 {
-    struct sockaddr_in addr;
+    struct sockaddr_in addr = { 0 };
     unsigned int       addrLen;
     EGLint err = EGL_SUCCESS;
     int    ret;
@@ -447,7 +453,11 @@ static EGLint startInetHandshake(pthread_t *thread,
     /* Return host byte ordered port for sending through wayland protocol.
      * Wayland will convert back to wire format before sending. */
     addrLen = sizeof(addr);
-    getsockname(*clientSocket, (struct sockaddr *)&addr, &addrLen);
+    ret = getsockname(*clientSocket, (struct sockaddr *)&addr, &addrLen);
+    if (ret != 0) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
     *port = ntohs(addr.sin_port);
 
     /* Start a new thread that will accept one connection only. It will store
@@ -557,10 +567,12 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
     /* Setup the wl_eglstream events queue and callbacks */
     wl_proxy_set_queue((struct wl_proxy *)surface->ctx.wlStreamResource,
                        display->wlQueue);
-    wl_buffer_add_listener(surface->ctx.wlStreamResource,
-                           &wl_buffer_listener,
-                           surface);
-    ret = wlEglRoundtrip(display, display->wlQueue);
+    ret = wl_buffer_add_listener(surface->ctx.wlStreamResource,
+                                 &wl_buffer_listener,
+                                 surface);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, display->wlQueue);
+    }
     if (ret < 0) {
         err = EGL_BAD_ALLOC;
         goto fail;
@@ -905,6 +917,7 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
     WlEglDisplay *display = (WlEglDisplay*)dpy;
     WlEglSurface *surface = (WlEglSurface*)eglSurface;
     WlEglSurfaceCtx *ctx, *next;
+    int ret = 0;
 
     if (!wlEglIsWlEglDisplay(display)) {
         return EGL_BAD_DISPLAY;
@@ -922,7 +935,7 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
             wlEglIsWaylandWindowValid(surface->wlEglWin)) {
             wl_surface_attach(surface->wlSurface, NULL, 0, 0);
             wl_surface_commit(surface->wlSurface);
-            wlEglRoundtrip(display, display->wlQueue);
+            ret = wlEglRoundtrip(display, display->wlQueue);
 
             surface->wlEglWin->private = NULL;
             surface->wlEglWin->resize_callback = NULL;
@@ -945,7 +958,7 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
     wl_list_remove(&surface->link);
     free(surface);
 
-    return EGL_SUCCESS;
+    return (ret >= 0) ? EGL_SUCCESS : EGL_BAD_DISPLAY;
 }
 
 static void

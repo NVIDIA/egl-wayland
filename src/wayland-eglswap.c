@@ -118,12 +118,14 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
     wlExternalApiLock();
 
     if (wlEglIsWlEglSurface(surface)) {
-        wl_eglstream_display_swap_interval(display->wlStreamDpy,
-                                           surface->ctx.wlStreamResource,
-                                           interval);
+        if (surface->ctx.wlStreamResource) {
+            wl_eglstream_display_swap_interval(display->wlStreamDpy,
+                                               surface->ctx.wlStreamResource,
+                                               interval);
 
-        /* Cache interval value so we can reset it upon surface reattach */
-        surface->swapInterval = interval;
+            /* Cache interval value so we can reset it upon surface reattach */
+            surface->swapInterval = interval;
+        }
     }
 
     wlExternalApiUnlock();

@@ -33,12 +33,19 @@ extern "C" {
 #endif
 
 /*
+ * Forward declarations
+ */
+struct wl_eglstream_display;
+struct wl_eglstream;
+
+
+/*
  * wl_eglstream_display_bind()
  *
  * Creates and initializes a wl_eglstream_display connection associated to the
  * given wl_display and EGLDisplay.
  */
-struct wl_eglstream_display*
+EGLBoolean
 wl_eglstream_display_bind(WlEglPlatformData *data,
                           struct wl_display *wlDisplay,
                           EGLDisplay eglDisplay);
