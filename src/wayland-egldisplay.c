@@ -30,6 +30,7 @@
 #include "wayland-eglutils.h"
 #include <string.h>
 #include <stdlib.h>
+#include <assert.h>
 
 /* TODO: Make global display lists hang off platform data */
 static struct wl_list wlEglDisplayList   = WL_LIST_INIT(&wlEglDisplayList);
@@ -72,7 +73,7 @@ EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy)
 
     res = wl_eglstream_display_bind((WlEglPlatformData *)data,
                                     (struct wl_display *)nativeDpy,
-                                    dpy) ? EGL_TRUE : EGL_FALSE;
+                                    dpy);
 
     wlExternalApiUnlock();
 
@@ -159,25 +160,19 @@ eglstream_display_handle_swapinterval_override(
                                     int32_t swapinterval,
                                     struct wl_buffer *streamResource)
 {
-    WlEglSurface      *surf  = NULL;
-    WlEglPlatformData *pData = NULL;
-    EGLDisplay         dpy   = EGL_NO_DISPLAY;
+    WlEglSurface *surf = NULL;
 
     wl_list_for_each(surf, &wlEglSurfaceList, link) {
         if (surf->ctx.wlStreamResource == streamResource) {
-           break;
+            WlEglPlatformData *pData = surf->wlEglDpy->data;
+            EGLDisplay         dpy   = surf->wlEglDpy->devDpy->eglDisplay;
+
+            if (pData->egl.swapInterval(dpy, swapinterval)) {
+                surf->swapInterval = swapinterval;
+            }
+
+            break;
         }
-    }
-
-    if (surf == NULL) {
-        return;
-    }
-
-    pData = surf->wlEglDpy->data;
-    dpy   = surf->wlEglDpy->devDpy->eglDisplay;
-
-    if (pData->egl.swapInterval(dpy, swapinterval)) {
-        surf->swapInterval = swapinterval;
     }
 }
 
@@ -206,8 +201,8 @@ int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
     int ret = 0, done = 0;
 
     callback = wl_display_sync(display->nativeDpy);
-    wl_callback_add_listener(callback, &sync_listener, &done);
-    wl_proxy_set_queue((struct wl_proxy *) callback, queue);
+    wl_proxy_set_queue((struct wl_proxy *)callback, queue);
+    ret = wl_callback_add_listener(callback, &sync_listener, &done);
 
     while (ret != -1 && !done) {
         /* We are handing execution control over to Wayland here, so we need to
@@ -275,7 +270,9 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy)
     }
 
     /* Destroy the external display */
-    wl_list_remove(&display->link);
+    if (display->link.prev && display->link.next) {
+        wl_list_remove(&display->link);
+    }
     free(display);
 
     /* XXX: Currently, we assume an internal EGLDisplay will only be used by a
@@ -313,7 +310,9 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 {
     WlEglPlatformData *pData        = (WlEglPlatformData *)data;
     WlEglDeviceDpy    *devDpy       = NULL;
+    WlEglDeviceDpy    *tmpDpy       = NULL;
     WlEglDisplay      *display      = NULL;
+    WlEglDisplay      *dpy          = NULL;
     EGLBoolean         ownNativeDpy = EGL_FALSE;
     EGLint             numDevices   = 0;
     int                ret          = 0;
@@ -353,8 +352,6 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         goto fail;
     }
 
-    wl_list_insert(&wlEglDisplayList, &display->link);
-
     display->data = pData;
 
     display->ownNativeDpy = ownNativeDpy;
@@ -367,10 +364,14 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display->wlRegistry = wl_display_get_registry(nativeDpy);
     wl_proxy_set_queue((struct wl_proxy *)display->wlRegistry,
                         display->wlQueue);
-    wl_registry_add_listener(display->wlRegistry, &registry_listener, display);
-
-    ret = wlEglRoundtrip(display, display->wlQueue);
+    ret = wl_registry_add_listener(display->wlRegistry,
+                                   &registry_listener,
+                                   display);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, display->wlQueue);
+    }
     if (ret < 0 || !display->wlStreamDpy) {
+        wlExternalApiUnlock();
         goto fail;
     }
 
@@ -378,22 +379,20 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
      * catch any bind-related event (e.g. server capabilities) */
     wl_proxy_set_queue((struct wl_proxy *)display->wlStreamDpy,
                        display->wlQueue);
-    wl_eglstream_display_add_listener(display->wlStreamDpy,
-                                      &eglstream_display_listener,
-                                      display);
-    ret = wlEglRoundtrip(display, display->wlQueue);
+    ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
+                                            &eglstream_display_listener,
+                                            display);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, display->wlQueue);
+    }
     if (ret < 0) {
+        wlExternalApiUnlock();
         goto fail;
     }
 
     /* Restore global registry default queue as other clients may rely on it and
        we are no longer interested in registry events */
     wl_proxy_set_queue((struct wl_proxy *)display->wlRegistry, NULL);
-
-    /* Get number of available EGL devices */
-    if (!pData->egl.queryDevices(0, NULL, &numDevices) || numDevices == 0) {
-        goto fail;
-    }
 
     /*
      * Seek for the desired device in wlEglDeviceDpyList. If found, use it;
@@ -402,16 +401,19 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     wl_list_for_each(devDpy, &wlEglDeviceDpyList, link) {
         /* TODO: Add support for multiple devices/device selection */
         display->devDpy = devDpy;
+        display->devDpy->refCount++;
         break;
     }
 
     if (!display->devDpy) {
+        wlExternalApiUnlock();
+
         devDpy = calloc(1, sizeof(*devDpy));
         if (!devDpy) {
             goto fail;
         }
 
-        if (!pData->egl.queryDevices(1, &devDpy->eglDevice, &numDevices)) {
+        if (!pData->egl.queryDevices(1, &devDpy->eglDevice, &numDevices) || numDevices == 0) {
             goto fail;
         }
 
@@ -423,20 +425,60 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         if (devDpy->eglDisplay == EGL_NO_DISPLAY) {
             goto fail;
         }
-
-        wl_list_insert(&wlEglDeviceDpyList, &devDpy->link);
-
-        display->devDpy = devDpy;
+        wlExternalApiLock();
     }
 
-    display->devDpy->refCount++;
+    // Due to temporary unlock of wlMutex in wlEglRoundtrip, it is possible
+    // that two or more threads enter wlEglGetPlatformDisplayExport simultaneously.
+    // Before inserting display in wlEglDisplayList, we need to check whether
+    // while we were unlocked, other thread already inserted the display which
+    // has the same nativeDpy. If so, we need to free allocations and return
+    // the already inserted display.
+    wl_list_for_each(dpy, &wlEglDisplayList, link) {
+        if (dpy->nativeDpy == display->nativeDpy) {
+            // If display->devDpy is NULL, we just allocated devDpy, need to free it.
+            if (!display->devDpy) {
+                free(devDpy);
+            }
+
+            terminateDisplay(display);
+
+            wlExternalApiUnlock();
+            return (EGLDisplay)dpy;
+        }
+    }
+
+    // If no device found in wlEglDeviceDpyList, insert the newly created
+    // WlEglDeviceDpy into wlEglDeviceDpyList.
+    if (!display->devDpy) {
+        assert(devDpy);
+        // Given that different wayland EGLDisplays may share the same devDpy,
+        // it could happen that someone else creating a different display
+        // already created the devDpy. We need to check it does not exist yet
+        // before inserting, and if it does, free devDpy.
+        wl_list_for_each(tmpDpy, &wlEglDeviceDpyList, link) {
+            /* TODO: Add support for multiple devices/device selection */
+            display->devDpy = tmpDpy;
+            free (devDpy);
+            break;
+        }
+
+        if (!display->devDpy) {
+            wl_list_insert(&wlEglDeviceDpyList, &devDpy->link);
+            display->devDpy = devDpy;
+        }
+
+        display->devDpy->refCount++;
+    }
+
+    // The newly created WlEglDisplay has been set up properly, insert it
+    // in wlEglDisplayList.
+    wl_list_insert(&wlEglDisplayList, &display->link);
 
     wlExternalApiUnlock();
     return display;
 
 fail:
-    wlExternalApiUnlock();
-
     if (display) {
         wlEglTerminateHook(display);
     } else if (ownNativeDpy) {
@@ -501,12 +543,13 @@ EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
                                  EGLint configSize,
                                  EGLint *numConfig)
 {
-    WlEglDisplay      *display  = (WlEglDisplay *)dpy;
-    WlEglPlatformData *data     = display->data;
-    EGLint            *attribs2 = NULL;
-    EGLint             nAttribs = 0;
-    EGLBoolean         surfType = EGL_FALSE;
-    EGLint             err      = EGL_SUCCESS;
+    WlEglDisplay      *display       = (WlEglDisplay *)dpy;
+    WlEglPlatformData *data          = display->data;
+    EGLint            *attribs2      = NULL;
+    EGLint             nAttribs      = 0;
+    EGLint             nTotalAttribs = 0;
+    EGLBoolean         surfType      = EGL_FALSE;
+    EGLint             err           = EGL_SUCCESS;
     EGLBoolean         ret;
 
     /* Save the internal EGLDisplay handle, as it's needed by the actual
@@ -523,17 +566,19 @@ EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
 
     /* If not SURFACE_TYPE provided, we need convert the default WINDOW_BIT to a
      * default EGL_STREAM_BIT */
-    nAttribs += (surfType ? 0 : 2);
+    nTotalAttribs += (surfType ? nAttribs : (nAttribs + 2));
 
     /* Make attributes list copy */
-    attribs2 = (EGLint *)malloc((nAttribs + 1) * sizeof(*attribs2));
+    attribs2 = (EGLint *)malloc((nTotalAttribs + 1) * sizeof(*attribs2));
     if (!attribs2) {
         err = EGL_BAD_ALLOC;
         goto done;
     }
 
-    memcpy(attribs2, attribs, nAttribs * sizeof(*attribs2));
-    attribs2[nAttribs] = EGL_NONE;
+    if (nAttribs > 0) {
+        memcpy(attribs2, attribs, nAttribs * sizeof(*attribs2));
+    }
+    attribs2[nTotalAttribs] = EGL_NONE;
 
     /* Replace all WINDOW_BITs by EGL_STREAM_BITs */
     if (surfType) {
@@ -548,8 +593,8 @@ EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
             nAttribs += 2;
         }
     } else {
-        attribs2[nAttribs - 2] = EGL_SURFACE_TYPE;
-        attribs2[nAttribs - 1] = EGL_STREAM_BIT_KHR;
+        attribs2[nTotalAttribs - 2] = EGL_SURFACE_TYPE;
+        attribs2[nTotalAttribs - 1] = EGL_STREAM_BIT_KHR;
     }
 
     /* Actual eglChooseConfig() call */

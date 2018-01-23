@@ -71,7 +71,7 @@ handle_create_stream(struct wl_client *client,
 {
     struct wl_eglstream_display *wlStreamDpy = resource->data;
     struct wl_eglstream *wlStream;
-    struct sockaddr_in sockAddr;
+    struct sockaddr_in sockAddr = { 0 };
     intptr_t *attr;
     int mask = 0;
     enum wl_eglstream_error err;
@@ -95,7 +95,6 @@ handle_create_stream(struct wl_client *client,
             break;
 
         case WL_EGLSTREAM_HANDLE_TYPE_INET:
-            memset(&sockAddr, 0, sizeof(sockAddr));
             sockAddr.sin_family = AF_INET;
             wlStream->isInet    = EGL_TRUE;
             break;
@@ -106,7 +105,7 @@ handle_create_stream(struct wl_client *client,
 
         default:
             err = WL_EGLSTREAM_ERROR_BAD_HANDLE;
-            break;
+            goto error_create_stream;
     }
 
     wl_array_for_each(attr, attribs) {
@@ -183,6 +182,7 @@ error_create_stream:
             break;
         case WL_EGLSTREAM_ERROR_BAD_HANDLE:
             wl_resource_post_error(resource, err, "Invalid or unknown handle");
+            break;
         case WL_EGLSTREAM_ERROR_BAD_ATTRIBS:
             wl_resource_post_error(resource, err, "Malformed attributes list");
             break;
@@ -271,7 +271,7 @@ wl_eglstream_display_global_bind(struct wl_client *client,
     wl_eglstream_display_send_caps(resource, caps);
 }
 
-struct wl_eglstream_display *
+EGLBoolean
 wl_eglstream_display_bind(WlEglPlatformData *data,
                           struct wl_display *wlDisplay,
                           EGLDisplay eglDisplay)
@@ -282,12 +282,12 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
     /* Check whether there's an EGLDisplay already bound to the given
      * wl_display */
     if (wl_eglstream_display_get(eglDisplay) != NULL) {
-        return NULL;
+        return EGL_FALSE;
     }
 
     wlStreamDpy = malloc(sizeof(*wlStreamDpy));
     if (!wlStreamDpy) {
-        return NULL;
+        return EGL_FALSE;
     }
 
     wlStreamDpy->data       = data;
@@ -317,7 +317,7 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
 
     wl_list_insert(&wlStreamDpyList, &wlStreamDpy->link);
 
-    return wlStreamDpy;
+    return EGL_TRUE;
 }
 
 void
