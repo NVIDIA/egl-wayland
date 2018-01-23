@@ -1,4 +1,8 @@
-libdl = cc.find_library('dl')
+if not cc.has_function('dlsym')
+  libdl = cc.find_library('dl')
+else
+  libdl = []
+endif
 
 add_project_arguments('-pthread', language : 'c')
 
