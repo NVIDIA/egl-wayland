@@ -1,11 +1,11 @@
 project('wayland-eglstream', 'c',
-	version : '1.0.3',
-	default_options : [
+        version : '1.0.3',
+        default_options : [
           'buildtype=debugoptimized',
           'c_std=gnu99',
           'warning_level=1',
         ],
-	license : 'MIT',
+        license : 'MIT',
         meson_version : '>= 0.43'
 )
 
@@ -40,37 +40,6 @@ cdata.set_quoted('PACKAGE_STRING',     '@0@ @1@'.format(meson.project_name(), me
 cdata.set_quoted('PACKAGE_TARNAME',     meson.project_name(),                                           description : 'Define to the one symbol short name of this package.')
 cdata.set_quoted('PACKAGE_URL',        '',                                                              description : 'Define to the home page for this package.')
 cdata.set_quoted('PACKAGE_VERSION',    meson.project_version(),                                         description : 'Define to the version of this package.')
-
-check_headers = [
-    ['arpa/inet.h',  'HAVE_ARPA_INET_H'],
-    ['stddef.h',     'HAVE_STDDEF_H'],
-    ['stdint.h',     'HAVE_STDINT_H'],
-    ['stdlib.h',     'HAVE_STDLIB_H'],
-    ['string.h',     'HAVE_STRING_H'],
-    ['sys/socket.h', 'HAVE_SYS_SOCKET_H'],
-    ['unistd.h',     'HAVE_UNISTD_H'],
-]
-
-foreach h : check_headers
-  if cc.has_header(h.get(0))
-    cdata.set10(h.get(1), true)
-  endif
-endforeach
-
-check_functions = [
-    ['getpagesize', 'HAVE_GETPAGESIZE'],
-    ['inet_ntoa',   'HAVE_INET_NTOA'],
-    ['memset',      'HAVE_MEMSET'],
-    ['socket',      'HAVE_SOCKET'],
-    ['strcasecmp',  'HAVE_STRCASECMP'],
-    ['strstr',      'HAVE_STRSTR'],
-]
-
-foreach f : check_functions
-  if cc.has_function(f.get(0))
-    cdata.set10(f.get(1), true)
-  endif
-endforeach
 
 configure_file(output : 'config.h', configuration : cdata)
 add_project_arguments('-include', 'config.h', language : 'c')

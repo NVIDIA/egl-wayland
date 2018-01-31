@@ -13,9 +13,9 @@ add_project_link_arguments(
 )
 
 foreach arg : [
-	       'unused-parameter',
-	       'pedantic',
-	       'deprecated-declarations',
+               'unused-parameter',
+               'pedantic',
+               'deprecated-declarations',
               ]
         if cc.has_argument('-W' + arg)
                 add_project_arguments('-Wno-' + arg, language : 'c')
@@ -43,6 +43,7 @@ src = [
 egl_wayland = library('nvidia-egl-wayland',
     src,
     dependencies : [
+        eglexternalplatform,
         wayland_server,
         wayland_client,
         libdl,
