@@ -44,6 +44,14 @@ To install, run:
     make install
 
 
+You can also use meson build system to build and install:
+
+    meson builddir
+    cd builddir
+    ninja
+    ninja install
+
+
 *Notes*:
 
 The NVIDIA EGL driver uses a JSON-based loader to load all EGL External
