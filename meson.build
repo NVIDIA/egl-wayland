@@ -55,7 +55,7 @@ pkgconf.set('datarootdir', '${prefix}/@0@'.format(get_option('datadir')))
 pkgconf.set('PACKAGE',                           meson.project_name())
 pkgconf.set('WAYLAND_EXTERNAL_VERSION',          meson.project_version())
 pkgconf.set('EGL_EXTERNAL_PLATFORM_MIN_VERSION', '@0@.@1@'.format(wayland_eglstream_major_version, wayland_eglstream_minor_version))
-pkgconf.set('EGL_EXTERNAL_PLATFORM_MAX_VERSION', [wayland_eglstream_major_version.to_int() + 1])
+pkgconf.set('EGL_EXTERNAL_PLATFORM_MAX_VERSION', wayland_eglstream_major_version.to_int() + 1)
 
 configure_file(input : 'wayland-eglstream.pc.in',
                output : 'wayland-eglstream.pc',
