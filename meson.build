@@ -1,5 +1,5 @@
 project('wayland-eglstream', 'c',
-        version : '1.0.3',
+        version : '1.0.4',
         default_options : [
           'buildtype=debugoptimized',
           'c_std=gnu99',
