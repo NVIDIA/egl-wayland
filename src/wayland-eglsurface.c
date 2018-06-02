@@ -297,6 +297,11 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
         return;
     }
 
+    if (surface->throttleCallback != NULL) {
+        wl_callback_destroy(surface->throttleCallback);
+        surface->throttleCallback = NULL;
+    }
+
     finish_wl_eglstream_damage_thread(surface, ctx, 1);
 
     if (stream != EGL_NO_STREAM_KHR) {

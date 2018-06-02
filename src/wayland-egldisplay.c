@@ -227,7 +227,23 @@ int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
     return ret;
 }
 
-static EGLBoolean terminateDisplay(EGLDisplay dpy)
+/* On wayland, when a wl_display backed EGLDisplay is created and then
+ * wl_display is destroyed without terminating EGLDisplay first, some
+ * driver allocated resources associated with wl_display could not be
+ * destroyed properly during EGL teardown.
+ * Per EGL spec: Termination of a display that has already been terminated,
+ * or has not yet been initialized, is allowed, but the only effect of such
+ * a call is to return EGL_TRUE, since there are no EGL resources associated
+ * with the display to release.
+ * However, in our wayland egl driver, we do allocate some resources
+ * which are associated with wl_display even eglInitialize is not called.
+ * If the app does not terminate EGLDisplay before closing wl_display,
+ * it can hit assertion or hang in pthread_mutex_lock during EGL teardown.
+ * To WAR the issue, in case wl_display has been destroyed, we skip
+ * destroying some resources during EGL system termination, only when
+ * terminateDisplay is called from wlEglDestroyAllDisplays.
+ */
+static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
 {
     WlEglDisplay      *display       = (WlEglDisplay *)dpy;
     WlEglPlatformData *data          = display->data;
@@ -238,18 +254,21 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy)
      * destroy the display connection itself */
     wlEglDestroyAllSurfaces(display);
 
-    if (display->wlRegistry) {
-        wl_registry_destroy(display->wlRegistry);
+    if (skipDestroy != EGL_TRUE || display->ownNativeDpy) {
+        if (display->wlRegistry) {
+            wl_registry_destroy(display->wlRegistry);
+        }
+        if (display->wlQueue) {
+            wl_event_queue_destroy(display->wlQueue);
+        }
+        if (display->wlDamageEventQueue) {
+            wl_event_queue_destroy(display->wlDamageEventQueue);
+        }
+        if (display->wlStreamDpy) {
+            wl_eglstream_display_destroy(display->wlStreamDpy);
+        }
     }
-    if (display->wlQueue) {
-        wl_event_queue_destroy(display->wlQueue);
-    }
-    if (display->wlDamageEventQueue) {
-        wl_event_queue_destroy(display->wlDamageEventQueue);
-    }
-    if (display->wlStreamDpy) {
-        wl_eglstream_display_destroy(display->wlStreamDpy);
-    }
+
     if (display->ownNativeDpy) {
         wl_display_disconnect(display->nativeDpy);
     }
@@ -297,7 +316,7 @@ EGLBoolean wlEglTerminateHook(EGLDisplay dpy)
     EGLBoolean res;
 
     wlExternalApiLock();
-    res = terminateDisplay(dpy);
+    res = terminateDisplay(dpy, EGL_FALSE);
     wlExternalApiUnlock();
 
     return res;
@@ -441,7 +460,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                 free(devDpy);
             }
 
-            terminateDisplay(display);
+            terminateDisplay(display, EGL_FALSE);
 
             wlExternalApiUnlock();
             return (EGLDisplay)dpy;
@@ -515,6 +534,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         CACHE_EXT(KHR, stream_producer_eglsurface);
         CACHE_EXT(NV,  stream_fifo_synchronous);
         CACHE_EXT(NV,  stream_sync);
+        CACHE_EXT(NV,  stream_flush);
 
 #undef CACHE_EXT
 
@@ -651,7 +671,7 @@ EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data)
 
     wl_list_for_each_safe(display, next, &wlEglDisplayList, link) {
         if (display->data == data) {
-            res = terminateDisplay((EGLDisplay)display) && res;
+            res = terminateDisplay((EGLDisplay)display, EGL_TRUE) && res;
         }
     }
 
