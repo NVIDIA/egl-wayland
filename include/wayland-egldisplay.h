@@ -71,6 +71,7 @@ typedef struct WlEglDisplayRec {
         unsigned int stream_producer_eglsurface : 1;
         unsigned int stream_fifo_synchronous    : 1;
         unsigned int stream_sync                : 1;
+        unsigned int stream_flush               : 1;
     } exts;
 
     struct wl_list link;

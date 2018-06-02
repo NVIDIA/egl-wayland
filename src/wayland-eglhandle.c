@@ -41,6 +41,7 @@ WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver)
         return NULL;
     }
 
+    /* Fetch all required driver functions */
 #define GET_PROC(_FIELD_, _NAME_)                           \
     do {                                                    \
         res->egl._FIELD_ = driver->getProcAddress(#_NAME_); \
@@ -49,6 +50,7 @@ WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver)
         }                                                   \
     } while (0)
 
+    /* Core and basic stream functionality */
     GET_PROC(queryString,                 eglQueryString);
     GET_PROC(queryDevices,                eglQueryDevicesEXT);
 
@@ -77,12 +79,22 @@ WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver)
     GET_PROC(getError,                    eglGetError);
     GET_PROC(releaseThread,               eglReleaseThread);
 
+#undef GET_PROC
+
+    /* Fetch all optional driver functions */
+#define GET_PROC(_FIELD_, _NAME_) \
+    res->egl._FIELD_ = driver->getProcAddress(#_NAME_)
+
+    /* Used by damage thread */
     GET_PROC(queryStream,                 eglQueryStreamKHR);
     GET_PROC(queryStreamu64,              eglQueryStreamu64KHR);
     GET_PROC(createStreamSync,            eglCreateStreamSyncNV);
     GET_PROC(clientWaitSync,              eglClientWaitSyncKHR);
     GET_PROC(signalSync,                  eglSignalSyncKHR);
     GET_PROC(destroySync,                 eglDestroySyncKHR);
+
+    /* Stream flush */
+    GET_PROC(streamFlush,                 eglStreamFlushNV);
 
 #undef GET_PROC
 

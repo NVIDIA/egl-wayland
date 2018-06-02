@@ -193,6 +193,10 @@ damage_thread(void *args)
             // If there's an unprocessed frame ready, send damage event
             if (surface->ctx.framesFinished !=
                 surface->ctx.framesProcessed) {
+                if (display->exts.stream_flush) {
+                    data->egl.streamFlush(display->devDpy->eglDisplay,
+                                          surface->ctx.eglStream);
+                }
                 /* wlEglSendDamageEvent() expects the API lock to be held */
                 wlExternalApiLock();
                 ok = wlEglSendDamageEvent(surface);

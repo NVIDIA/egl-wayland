@@ -33,6 +33,14 @@
 #define EGL_STREAM_FIFO_SYNCHRONOUS_NV               0x3336
 #endif /* EGL_NV_stream_fifo_synchronous */
 
+#ifndef EGL_NV_stream_flush
+#define EGL_NV_stream_flush 1
+typedef EGLBoolean (EGLAPIENTRYP PFNEGLSTREAMFLUSHNVPROC) (EGLDisplay dpy, EGLStreamKHR stream);
+#ifdef EGL_EGLEXT_PROTOTYPES
+EGLAPI EGLBoolean EGLAPIENTRY eglStreamFlushNV (EGLDisplay dpy, EGLStreamKHR stream);
+#endif
+#endif /*EGL_NV_stream_flush*/
+
 /* Deprecated. Use EGL_KHR_stream_attrib */
 #ifndef EGL_NV_stream_attrib
 #define EGL_NV_stream_attrib 1

@@ -34,6 +34,7 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
     WlEglDisplay      *display     = (WlEglDisplay *)eglDisplay;
     WlEglPlatformData *data        = display->data;
     WlEglSurface      *surface     = (WlEglSurface *)eglSurface;
+    EGLStreamKHR       eglStream;
     EGLBoolean         isOffscreen = EGL_FALSE;
     EGLBoolean         res;
     EGLint             err;
@@ -61,10 +62,11 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
         wlEglWaitFrameSync(surface, display->wlQueue);
     }
 
-    /* Save the internal EGLDisplay and EGLSurface handles, as they are needed
-     * by the eglSwapBuffers() call below */
+    /* Save the internal EGLDisplay, EGLSurface and EGLStream handles, as
+     * they are needed by the eglSwapBuffers() and streamFlush calls below */
     eglDisplay = display->devDpy->eglDisplay;
     eglSurface = surface->ctx.eglSurface;
+    eglStream = surface->ctx.eglStream;
 
     /* eglSwapBuffers() is a blocking call. We must release the lock so other
      * threads using the external platform are allowed to progress.
@@ -76,6 +78,9 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
      */
     wlExternalApiUnlock();
     res = data->egl.swapBuffers(eglDisplay, eglSurface);
+    if (display->exts.stream_flush) {
+        data->egl.streamFlush(eglDisplay, eglStream);
+    }
     if (isOffscreen) {
         goto done;
     }

@@ -98,6 +98,7 @@ typedef struct WlEglPlatformDataRec {
         PFNEGLCLIENTWAITSYNCKHRPROC                 clientWaitSync;
         PFNEGLSIGNALSYNCKHRPROC                     signalSync;
         PFNEGLDESTROYSYNCKHRPROC                    destroySync;
+        PFNEGLSTREAMFLUSHNVPROC                     streamFlush;
     } egl;
 
     /* Non-application-facing callbacks provided by the EGL driver */
