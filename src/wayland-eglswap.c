@@ -78,11 +78,11 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
      */
     wlExternalApiUnlock();
     res = data->egl.swapBuffers(eglDisplay, eglSurface);
-    if (display->exts.stream_flush) {
-        data->egl.streamFlush(eglDisplay, eglStream);
-    }
     if (isOffscreen) {
         goto done;
+    }
+    if (display->exts.stream_flush) {
+        data->egl.streamFlush(eglDisplay, eglStream);
     }
     wlExternalApiLock();
     if (res) {

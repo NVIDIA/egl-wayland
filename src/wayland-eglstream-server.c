@@ -28,7 +28,8 @@
 #include <assert.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netdb.h>
 
 #include <wayland-server.h>
 #include <EGL/egl.h>
@@ -72,6 +73,7 @@ handle_create_stream(struct wl_client *client,
     struct wl_eglstream_display *wlStreamDpy = resource->data;
     struct wl_eglstream *wlStream;
     struct sockaddr_in sockAddr = { 0 };
+    char sockAddrStr[NI_MAXHOST];
     intptr_t *attr;
     int mask = 0;
     enum wl_eglstream_error err;
@@ -188,7 +190,12 @@ error_create_stream:
             break;
         case WL_EGLSTREAM_ERROR_BAD_ADDRESS:
             wl_resource_post_error(resource, err, "Unable to connect to %s:%d.",
-                                   inet_ntoa(sockAddr.sin_addr),
+                                   (getnameinfo((struct sockaddr *)&sockAddr,
+                                                sizeof(sockAddr),
+                                                sockAddrStr, NI_MAXHOST,
+                                                NULL, 0,
+                                                NI_NUMERICHOST) ?
+                                    "<invalid IP>" : sockAddrStr),
                                    ntohs(sockAddr.sin_port));
             break;
         default:

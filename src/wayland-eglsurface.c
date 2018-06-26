@@ -35,7 +35,7 @@
 #include <assert.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <arpa/inet.h>
+#include <netinet/in.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
@@ -349,7 +349,7 @@ static EGLint create_surface_stream_fd(WlEglSurface *surface)
     int                   handle  = EGL_NO_FILE_DESCRIPTOR_KHR;
     struct wl_array       wlAttribs;
     EGLint                eglAttribs[] = {
-        EGL_STREAM_FIFO_LENGTH_KHR, 1,
+        EGL_STREAM_FIFO_LENGTH_KHR, 0, // FIFO_LENGTH == 0 to set MAILBOX mode
         EGL_NONE,                   EGL_NONE,
         EGL_NONE
     };
@@ -360,6 +360,7 @@ static EGLint create_surface_stream_fd(WlEglSurface *surface)
      * just enable FIFO_SYNCHRONOUS if the extensions are supported */
     if (display->exts.stream_fifo_synchronous &&
         display->exts.stream_sync) {
+        eglAttribs[1] = 1; // FIFO_LENGTH == 1 to set FIFO mode
         eglAttribs[2] = EGL_STREAM_FIFO_SYNCHRONOUS_NV;
         eglAttribs[3] = EGL_TRUE;
     }
@@ -535,11 +536,11 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
 
         /* Get host byte ordered address for sending through wayland protocol.
          * Wayland will convert back to wire format before sending. Assume a
-         * local INET connection until cross partition wayland suppor is added.
+         * local INET connection until cross partition wayland support is added.
          */
         wlAttribsData = (intptr_t *)wlAttribs.data;
         wlAttribsData[0] = WL_EGLSTREAM_ATTRIB_INET_ADDR;
-        wlAttribsData[1] = (intptr_t)inet_network("127.0.0.1");
+        wlAttribsData[1] = (intptr_t)INADDR_LOOPBACK;
         wlAttribsData[2] = WL_EGLSTREAM_ATTRIB_INET_PORT;
         wlAttribsData[3] = (intptr_t)port;
 

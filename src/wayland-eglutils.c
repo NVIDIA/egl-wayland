@@ -137,10 +137,9 @@ void wlEglSetErrorCallback(WlEglPlatformData *data,
         const char *defaultMsg = "Wayland external platform error";
 
         if (file != NULL) {
-            char *msg = NULL;
-            if (asprintf(&msg, "%s:%d: %s", file, line, defaultMsg) != -1) {
+            char msg[256];
+            if (snprintf(msg, 256, "%s:%d: %s", file, line, defaultMsg) > 0) {
                 data->callbacks.setError(error, EGL_DEBUG_MSG_ERROR_KHR, msg);
-                free(msg);
                 return;
             }
         }
