@@ -14,6 +14,10 @@ libnvidia_egl_wayland_la_CFLAGS +=  \
     $(EGL_EXTERNAL_PLATFORM_CFLAGS) \
     $(WAYLAND_CFLAGS)
 
+# Make sure we don't use deprecated stuff
+libnvidia_egl_wayland_la_CFLAGS += \
+    -DWL_HIDE_DEPRECATED
+
 libnvidia_egl_wayland_la_LDFLAGS =                                                                                        \
     -shared                                                                                                               \
     -Wl,-Bsymbolic                                                                                                        \

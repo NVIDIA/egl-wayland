@@ -48,7 +48,7 @@ static struct wl_list wlStreamDpyList = WL_LIST_INIT(&wlStreamDpyList);
 static void
 destroy_wl_eglstream_resource(struct wl_resource *resource)
 {
-    struct wl_eglstream *wlStream = resource->data;
+    struct wl_eglstream *wlStream = wl_resource_get_user_data(resource);
 
     if (wlStream->handle >= 0) {
         close(wlStream->handle);
@@ -70,7 +70,8 @@ handle_create_stream(struct wl_client *client,
                      int handle, int handle_type,
                      struct wl_array *attribs)
 {
-    struct wl_eglstream_display *wlStreamDpy = resource->data;
+    struct wl_eglstream_display *wlStreamDpy =
+        wl_resource_get_user_data(resource);
     struct wl_eglstream *wlStream;
     struct sockaddr_in sockAddr = { 0 };
     char sockAddrStr[NI_MAXHOST];
@@ -217,7 +218,8 @@ handle_swap_interval(struct wl_client *client,
                      struct wl_resource *streamResource,
                      int interval)
 {
-    struct wl_eglstream_display *wlStreamDpy = displayResource->data;
+    struct wl_eglstream_display *wlStreamDpy =
+        wl_resource_get_user_data(displayResource);
     struct wl_eglstream *wlStream =
         wl_eglstream_display_get_stream(wlStreamDpy, streamResource);
 
