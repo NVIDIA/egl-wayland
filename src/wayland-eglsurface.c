@@ -755,6 +755,8 @@ create_surface_context(WlEglSurface *surface)
     surface->height = window->height;
     surface->dx = window->dx;
     surface->dy = window->dy;
+    window->attached_width = surface->width;
+    window->attached_height = surface->height;
 
     return EGL_SUCCESS;
 

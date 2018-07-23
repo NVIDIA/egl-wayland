@@ -31,6 +31,11 @@
 
 EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
 {
+    return wlEglSwapBuffersWithDamageHook(eglDisplay, eglSurface, NULL, 0);
+}
+
+EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglSurface, EGLint *rects, EGLint n_rects)
+{
     WlEglDisplay      *display     = (WlEglDisplay *)eglDisplay;
     WlEglPlatformData *data        = display->data;
     WlEglSurface      *surface     = (WlEglSurface *)eglSurface;
@@ -77,7 +82,11 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
      *      issue.
      */
     wlExternalApiUnlock();
-    res = data->egl.swapBuffers(eglDisplay, eglSurface);
+    if (rects) {
+        res = data->egl.swapBuffersWithDamage(eglDisplay, eglSurface, rects, n_rects);
+    } else {
+        res = data->egl.swapBuffers(eglDisplay, eglSurface);
+    }
     if (isOffscreen) {
         goto done;
     }

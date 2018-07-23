@@ -32,6 +32,10 @@ extern "C" {
 #endif
 
 EGLBoolean wlEglSwapBuffersHook(EGLDisplay dpy, EGLSurface eglSurface);
+EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay,
+                                          EGLSurface eglSurface,
+                                          EGLint *rects,
+                                          EGLint n_rects);
 EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval);
 
 EGLint wlEglStreamSwapIntervalCallback(WlEglPlatformData *data,

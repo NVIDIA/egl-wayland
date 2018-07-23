@@ -74,6 +74,7 @@ WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver)
     GET_PROC(destroySurface,              eglDestroySurface);
 
     GET_PROC(swapBuffers,                 eglSwapBuffers);
+    GET_PROC(swapBuffersWithDamage,       eglSwapBuffersWithDamageKHR);
     GET_PROC(swapInterval,                eglSwapInterval);
 
     GET_PROC(getError,                    eglGetError);

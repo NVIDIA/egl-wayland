@@ -35,21 +35,22 @@ extern "C" {
 /*
  * Define function pointers for EGL core functions
  */
-typedef const char* (*PWLEGLFNQUERYSTRINGCOREPROC)          (EGLDisplay dpy, EGLint name);
-typedef EGLContext  (*PWLEGLFNGETCURRENTCONTEXTCOREPROC)    (void);
-typedef EGLSurface  (*PWLEGLFNGETCURRENTSURFACECOREPROC)    (EGLint readdraw);
-typedef EGLBoolean  (*PWLEGLFNRELEASETHREADCOREPROC)        (void);
-typedef EGLint      (*PWLEGLFNGETERRORCOREPROC)             (void);
-typedef void*       (*PWLEGLFNGETPROCADDRESSCOREPROC)       (const char *name);
-typedef EGLBoolean  (*PWLEGLFNINITIALIZECOREPROC)           (EGLDisplay dpy, EGLint *major, EGLint *minor);
-typedef EGLBoolean  (*PWLEGLFNTERMINATECOREPROC)            (EGLDisplay dpy);
-typedef EGLBoolean  (*PWLEGLFNCHOOSECONFIGCOREPROC)         (EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config);
-typedef EGLBoolean  (*PWLEGLFNGETCONFIGATTRIBCOREPROC)      (EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint *value);
-typedef EGLSurface  (*PWLEGLFNCREATEPBUFFERSURFACECOREPROC) (EGLDisplay dpy, EGLConfig config, const EGLint *attrib_list);
-typedef EGLBoolean  (*PWLEGLFNDESTROYSURFACECOREPROC)       (EGLDisplay dpy, EGLSurface surface);
-typedef EGLBoolean  (*PWLEGLFNMAKECURRENTCOREPROC)          (EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLContext ctx);
-typedef EGLBoolean  (*PWLEGLFNSWAPBUFFERSCOREPROC)          (EGLDisplay dpy, EGLSurface surface);
-typedef EGLBoolean  (*PWLEGLFNSWAPINTERVALCOREPROC)         (EGLDisplay dpy, EGLint interval);
+typedef const char* (*PWLEGLFNQUERYSTRINGCOREPROC)              (EGLDisplay dpy, EGLint name);
+typedef EGLContext  (*PWLEGLFNGETCURRENTCONTEXTCOREPROC)        (void);
+typedef EGLSurface  (*PWLEGLFNGETCURRENTSURFACECOREPROC)        (EGLint readdraw);
+typedef EGLBoolean  (*PWLEGLFNRELEASETHREADCOREPROC)            (void);
+typedef EGLint      (*PWLEGLFNGETERRORCOREPROC)                 (void);
+typedef void*       (*PWLEGLFNGETPROCADDRESSCOREPROC)           (const char *name);
+typedef EGLBoolean  (*PWLEGLFNINITIALIZECOREPROC)               (EGLDisplay dpy, EGLint *major, EGLint *minor);
+typedef EGLBoolean  (*PWLEGLFNTERMINATECOREPROC)                (EGLDisplay dpy);
+typedef EGLBoolean  (*PWLEGLFNCHOOSECONFIGCOREPROC)             (EGLDisplay dpy, const EGLint *attrib_list, EGLConfig *configs, EGLint config_size, EGLint *num_config);
+typedef EGLBoolean  (*PWLEGLFNGETCONFIGATTRIBCOREPROC)          (EGLDisplay dpy, EGLConfig config, EGLint attribute, EGLint *value);
+typedef EGLSurface  (*PWLEGLFNCREATEPBUFFERSURFACECOREPROC)     (EGLDisplay dpy, EGLConfig config, const EGLint *attrib_list);
+typedef EGLBoolean  (*PWLEGLFNDESTROYSURFACECOREPROC)           (EGLDisplay dpy, EGLSurface surface);
+typedef EGLBoolean  (*PWLEGLFNMAKECURRENTCOREPROC)              (EGLDisplay dpy, EGLSurface draw, EGLSurface read, EGLContext ctx);
+typedef EGLBoolean  (*PWLEGLFNSWAPBUFFERSCOREPROC)              (EGLDisplay dpy, EGLSurface surface);
+typedef EGLBoolean  (*PWLEGLFNSWAPBUFFERSWITHDAMAGEKHRPROC)     (EGLDisplay dpy, EGLSurface surface, EGLint *rects, EGLint n_rects);
+typedef EGLBoolean  (*PWLEGLFNSWAPINTERVALCOREPROC)             (EGLDisplay dpy, EGLint interval);
 
 
 /*
@@ -86,6 +87,7 @@ typedef struct WlEglPlatformDataRec {
         PWLEGLFNDESTROYSURFACECOREPROC              destroySurface;
 
         PWLEGLFNSWAPBUFFERSCOREPROC                 swapBuffers;
+        PWLEGLFNSWAPBUFFERSWITHDAMAGEKHRPROC        swapBuffersWithDamage;
         PWLEGLFNSWAPINTERVALCOREPROC                swapInterval;
 
         PWLEGLFNGETERRORCOREPROC                    getError;

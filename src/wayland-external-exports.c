@@ -50,6 +50,7 @@ static const WlEglHook wlEglHooksMap[] = {
     { "eglInitialize",                     wlEglInitializeHook },
     { "eglQueryWaylandBufferWL",           wlEglQueryNativeResourceHook },
     { "eglSwapBuffers",                    wlEglSwapBuffersHook },
+    { "eglSwapBuffersWithDamageKHR",       wlEglSwapBuffersWithDamageHook },
     { "eglSwapInterval",                   wlEglSwapIntervalHook },
     { "eglTerminate",                      wlEglTerminateHook },
     { "eglUnbindWaylandDisplayWL",         wlEglUnbindDisplaysHook },
