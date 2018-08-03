@@ -4,13 +4,7 @@ else
   libdl = []
 endif
 
-add_project_arguments('-pthread', language : 'c')
-
-add_project_link_arguments(
-    '-pthread',
-    '-Wl,-Bsymbolic',
-    language : 'c'
-)
+add_project_link_arguments('-Wl,-Bsymbolic', language : 'c')
 
 foreach arg : [
                'unused-parameter',
@@ -46,6 +40,7 @@ egl_wayland = library('nvidia-egl-wayland',
         eglexternalplatform,
         wayland_server,
         wayland_client,
+        threads,
         libdl,
     ],
     include_directories : [inc, top_srcdir_inc],
