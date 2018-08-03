@@ -22,7 +22,8 @@ eglexternalplatform = dependency('eglexternalplatform', version : ['>=1.0', '<2'
 wayland_server = dependency('wayland-server')
 wayland_client = dependency('wayland-client')
 
-wl_scanner = find_program('wayland-scanner')
+wl_scanner = dependency('wayland-scanner', native: true)
+prog_scanner = find_program(wl_scanner.get_pkgconfig_variable('wayland_scanner'))
 
 inc = include_directories(
     'include',
