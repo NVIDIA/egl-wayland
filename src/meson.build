@@ -43,7 +43,7 @@ egl_wayland = library('nvidia-egl-wayland',
         threads,
         libdl,
     ],
-    include_directories : [inc, top_srcdir_inc],
+    include_directories : inc,
     version : meson.project_version(),
     install : true,
 )

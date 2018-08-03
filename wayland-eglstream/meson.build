@@ -4,16 +4,13 @@ generated_protocols = [
 ]
 
 foreach proto : generated_protocols
-    proto_name = proto
-    xml_path = '@0@.xml'.format(proto_name)
-
     foreach output_type: ['client-header', 'server-header', 'private-code']
         if output_type == 'client-header'
-            output_file = '@0@-client-protocol.h'.format(proto_name)
+            output_file = '@0@-client-protocol.h'.format(proto)
         elif output_type == 'server-header'
-            output_file = '@0@-server-protocol.h'.format(proto_name)
+            output_file = '@0@-server-protocol.h'.format(proto)
         else
-            output_file = '@0@-protocol.c'.format(proto_name)
+            output_file = '@0@-protocol.c'.format(proto)
             if wl_scanner.version().version_compare('< 1.14.91')
                 output_type = 'code'
             endif
@@ -23,7 +20,7 @@ foreach proto : generated_protocols
         target = custom_target(
             '@0@'.format(output_file),
             command: [prog_scanner, output_type, '@INPUT@', '@OUTPUT@'],
-            input: xml_path,
+            input: '@0@.xml'.format(proto),
             output: output_file,
         )
 

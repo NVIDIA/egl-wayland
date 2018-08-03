@@ -32,20 +32,6 @@ inc = include_directories(
     'wayland-eglstream',
 )
 
-top_srcdir_inc = include_directories('.')
-
-cdata = configuration_data()
-cdata.set_quoted('PACKAGE',            meson.project_name(),                                            description : 'Name of package')
-cdata.set_quoted('PACKAGE_BUGREPORT',  'mvicomoya@nvidia.com',                                          description : 'Define to the address where bug reports for this package should be sent.')
-cdata.set_quoted('PACKAGE_NAME',       meson.project_name(),                                            description : 'Define to the full name of this package.')
-cdata.set_quoted('PACKAGE_STRING',     '@0@ @1@'.format(meson.project_name(), meson.project_version()), description : 'Define to the full name and version of this package.')
-cdata.set_quoted('PACKAGE_TARNAME',     meson.project_name(),                                           description : 'Define to the one symbol short name of this package.')
-cdata.set_quoted('PACKAGE_URL',        '',                                                              description : 'Define to the home page for this package.')
-cdata.set_quoted('PACKAGE_VERSION',    meson.project_version(),                                         description : 'Define to the version of this package.')
-
-configure_file(output : 'config.h', configuration : cdata)
-add_project_arguments('-include', 'config.h', language : 'c')
-
 pkgconf = configuration_data()
 pkgconf.set('prefix',      get_option('prefix'))
 pkgconf.set('exec_prefix', '${prefix}')
@@ -65,11 +51,8 @@ generated_pc = [
 ]
 
 foreach pc : generated_pc
-    pc_name = pc
-    pc_path = '@0@.pc.in'.format(pc_name)
-
     configure_file(
-        input : pc_path,
+        input : '@0@.pc.in'.format(pc),
         output : '@BASENAME@',
         configuration : pkgconf,
         install : true,
