@@ -29,7 +29,6 @@ prog_scanner = find_program(wl_scanner.get_pkgconfig_variable('wayland_scanner')
 inc = include_directories(
     'include',
     'wayland-egl',
-    'wayland-eglstream',
 )
 
 pkgconf = configuration_data()
