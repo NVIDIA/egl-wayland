@@ -1,5 +1,5 @@
 project('wayland-eglstream', 'c',
-        version : '1.0.5',
+        version : '1.1.0',
         default_options : [
           'buildtype=debugoptimized',
           'c_std=gnu99',
@@ -18,7 +18,7 @@ wayland_eglstream_major_version = ver_arr[0]
 wayland_eglstream_minor_version = ver_arr[1]
 wayland_eglstream_micro_version = ver_arr[2]
 
-eglexternalplatform = dependency('eglexternalplatform', version : ['>=1.0', '<2'])
+eglexternalplatform = dependency('eglexternalplatform', version : ['>=1.1', '<2'])
 wayland_server = dependency('wayland-server')
 wayland_client = dependency('wayland-client')
 threads = dependency('threads')

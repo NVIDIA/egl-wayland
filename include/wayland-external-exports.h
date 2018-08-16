@@ -47,13 +47,13 @@
 #if !defined(WAYLAND_EXTERNAL_VERSION_MAJOR)
  #define WAYLAND_EXTERNAL_VERSION_MAJOR                      1
  #if !defined(WAYLAND_EXTERNAL_VERSION_MINOR)
-  #define WAYLAND_EXTERNAL_VERSION_MINOR                     0
+  #define WAYLAND_EXTERNAL_VERSION_MINOR                     1
  #endif
 #elif !defined(WAYLAND_EXTERNAL_VERSION_MINOR)
  #define WAYLAND_EXTERNAL_VERSION_MINOR                      0
 #endif
 
-#define WAYLAND_EXTERNAL_VERSION_MICRO                       5
+#define WAYLAND_EXTERNAL_VERSION_MICRO                       0
 
 
 #define EGL_EXTERNAL_PLATFORM_VERSION_MAJOR WAYLAND_EXTERNAL_VERSION_MAJOR
