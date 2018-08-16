@@ -686,18 +686,23 @@ const char* wlEglQueryStringExport(void *data,
 {
     WlEglPlatformData *pData   = (WlEglPlatformData *)data;
     WlEglDisplay      *display = (WlEglDisplay *)dpy;
+    EGLBoolean         isEGL15 = (pData->egl.major > 1) ||
+                                 ((pData->egl.major == 1) &&
+                                  (pData->egl.minor >= 5));
     const char        *res     = NULL;
 
     switch (name) {
     case EGL_EXT_PLATFORM_PLATFORM_CLIENT_EXTENSIONS:
-        res = "EGL_EXT_platform_wayland";
+        res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+                        "EGL_EXT_platform_wayland";
         break;
 
     case EGL_EXT_PLATFORM_DISPLAY_EXTENSIONS:
         if (dpy == EGL_NO_DISPLAY) {
             /* This should return all client extensions, which for now is
              * equivalent to EXTERNAL_PLATFORM_CLIENT_EXTENSIONS */
-            res = "EGL_EXT_platform_wayland";
+            res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+                            "EGL_EXT_platform_wayland";
         } else {
             EGLBoolean isWlEglDpy = EGL_FALSE;
 

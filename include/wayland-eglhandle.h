@@ -64,6 +64,9 @@ typedef EGLBoolean  (*PWLEGLFNSWAPINTERVALCOREPROC)             (EGLDisplay dpy,
 typedef struct WlEglPlatformDataRec {
     /* Application-facing callbacks fetched from the EGL driver */
     struct {
+        int                                         major;
+        int                                         minor;
+
         PWLEGLFNQUERYSTRINGCOREPROC                 queryString;
         PFNEGLQUERYDEVICESEXTPROC                   queryDevices;
 
@@ -117,10 +120,14 @@ typedef struct WlEglPlatformDataRec {
  * Creates a new platform data structure and fills it out with all the required
  * application-facing EGL methods provided by <driver>.
  *
+ * <apiMajor>.<apiMinor> correspond to the EGL External Platform interface
+ * version supported by the driver.
+ *
  * Returns a pointer to the newly created structure upon success; otherwise,
  * returns NULL.
  */
-WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver);
+WlEglPlatformData*
+wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver);
 
 /*
  * wlEglDestroyPlatformData()

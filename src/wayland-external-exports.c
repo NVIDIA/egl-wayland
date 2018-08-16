@@ -102,7 +102,7 @@ EGLBoolean loadEGLExternalPlatform(int major, int minor,
 
     platform->platform = EGL_PLATFORM_WAYLAND_EXT;
 
-    platform->data = (void *)wlEglCreatePlatformData(driver);
+    platform->data = (void *)wlEglCreatePlatformData(major, minor, driver);
     if (platform->data == NULL) {
         return EGL_FALSE;
     }

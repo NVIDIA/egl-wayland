@@ -28,7 +28,8 @@
 #include <errno.h>
 #include <assert.h>
 
-WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver)
+WlEglPlatformData*
+wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 {
     const char        *exts = NULL;
     WlEglPlatformData *res  = NULL;
@@ -40,6 +41,14 @@ WlEglPlatformData* wlEglCreatePlatformData(const EGLExtDriver *driver)
     if (res == NULL) {
         return NULL;
     }
+
+    /* Cache the EGL driver version */
+#if EGL_EXTERNAL_PLATFORM_HAS(DRIVER_VERSION)
+    if (EGL_EXTERNAL_PLATFORM_SUPPORTS(apiMajor, apiMajor, DRIVER_VERSION)) {
+        res->egl.major = driver->major;
+        res->egl.minor = driver->minor;
+    }
+#endif
 
     /* Fetch all required driver functions */
 #define GET_PROC(_FIELD_, _NAME_)                           \
