@@ -4,7 +4,7 @@ generated_protocols = [
 ]
 
 foreach proto : generated_protocols
-    foreach output_type: ['client-header', 'server-header', 'private-code']
+    foreach output_type: ['client-header', 'server-header', 'public-code']
         if output_type == 'client-header'
             output_file = '@0@-client-protocol.h'.format(proto)
         elif output_type == 'server-header'
