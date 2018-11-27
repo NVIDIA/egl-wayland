@@ -48,6 +48,8 @@ if test x$WAYLAND_SCANNER = x; then
     PKG_CHECK_MODULES(WAYLAND_SCANNER, [wayland-scanner])
     WAYLAND_SCANNER=`$PKG_CONFIG --variable=wayland_scanner wayland-scanner`
 fi
+AM_CONDITIONAL([WAYLAND_SCANNER_HAS_PRIVATE_CODE],
+               [test x$WAYLAND_SCANNER = x`$PKG_CONFIG --variable=wayland_scanner "wayland-scanner >= 1.14.91"`])
 
 # Initialize libtool
 LT_PREREQ([2.2])
@@ -73,6 +75,11 @@ AC_TYPE_UINT32_T
 # Checks for library functions.
 AC_FUNC_MALLOC
 AC_CHECK_FUNCS([getpagesize inet_ntoa memset socket strcasecmp strstr])
+
+# See if the compiler supports the -fvisibility=hidden flag.
+AX_CHECK_COMPILE_FLAG([-fvisibility=hidden],
+      [AC_SUBST([COMPILER_FLAG_VISIBILITY_HIDDEN], ["-fvisibility=hidden"])],
+      [AC_SUBST([COMPILER_FLAG_VISIBILITY_HIDDEN], [""])])
 
 # See if the linker supports the --no-undefined flag.
 AX_CHECK_LINK_FLAG([-Xlinker --no-undefined],

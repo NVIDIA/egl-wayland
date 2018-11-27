@@ -1,10 +1,13 @@
-generated_protocols = [
+generated_private_protocols = [
     'wayland-eglstream',
+]
+
+generated_public_protocols = [
     'wayland-eglstream-controller',
 ]
 
-foreach proto : generated_protocols
-    foreach output_type: ['client-header', 'server-header', 'public-code']
+foreach proto : generated_private_protocols + generated_public_protocols
+    foreach output_type: ['client-header', 'server-header', 'private-code']
         if output_type == 'client-header'
             output_file = '@0@-client-protocol.h'.format(proto)
         elif output_type == 'server-header'
@@ -13,6 +16,8 @@ foreach proto : generated_protocols
             output_file = '@0@-protocol.c'.format(proto)
             if wl_scanner.version().version_compare('< 1.14.91')
                 output_type = 'code'
+            elif generated_public_protocols.contains(proto)
+                output_type = 'public-code'
             endif
         endif
 

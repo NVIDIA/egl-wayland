@@ -4,6 +4,7 @@ else
   libdl = []
 endif
 
+add_project_arguments('-fvisibility=hidden', language : 'c')
 add_project_link_arguments('-Wl,-Bsymbolic', language : 'c')
 
 foreach arg : [
