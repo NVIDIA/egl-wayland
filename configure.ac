@@ -61,7 +61,7 @@ AC_CHECK_LIB([dl], [dlsym],
              [],
              [AC_MSG_ERROR("dlsym is needed to compile wayland-external")])
 PKG_CHECK_MODULES([EGL_EXTERNAL_PLATFORM], [eglexternalplatform >= ${EGL_EXTERNAL_PLATFORM_MIN_VERSION} eglexternalplatform < ${EGL_EXTERNAL_PLATFORM_MAX_VERSION}])
-PKG_CHECK_MODULES([WAYLAND], [wayland-server wayland-client])
+PKG_CHECK_MODULES([WAYLAND], [wayland-server wayland-client wayland-egl-backend >= 3])
 
 # Checks for header files.
 AC_CHECK_HEADERS([arpa/inet.h stddef.h stdint.h stdlib.h string.h sys/socket.h unistd.h])

@@ -21,6 +21,7 @@ wayland_eglstream_micro_version = ver_arr[2]
 eglexternalplatform = dependency('eglexternalplatform', version : ['>=1.1', '<2'])
 wayland_server = dependency('wayland-server')
 wayland_client = dependency('wayland-client')
+wayland_egl_backend = dependency('wayland-egl-backend', version : ['>=3'])
 threads = dependency('threads')
 
 wl_scanner = dependency('wayland-scanner', native: true)

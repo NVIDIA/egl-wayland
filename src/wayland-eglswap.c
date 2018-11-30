@@ -27,7 +27,7 @@
 #include "wayland-eglsurface.h"
 #include "wayland-eglhandle.h"
 #include "wayland-eglutils.h"
-#include "wayland-egl-priv.h"
+#include <wayland-egl-backend.h>
 
 EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
 {

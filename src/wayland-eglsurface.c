@@ -26,8 +26,8 @@
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
 #include "wayland-eglutils.h"
-#include "wayland-egl-priv.h"
 #include "wayland-egl-ext.h"
+#include <wayland-egl-backend.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
@@ -1012,7 +1012,7 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
                 ret = wlEglRoundtrip(display, queue);
             }
 
-            surface->wlEglWin->private = NULL;
+            surface->wlEglWin->driver_private = NULL;
             surface->wlEglWin->resize_callback = NULL;
             if (surface->wlEglWinVer >= WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE) {
                 surface->wlEglWin->destroy_window_callback = NULL;
@@ -1099,7 +1099,7 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     }
 
     // Check for existing associated surface
-    if (window->private != NULL) {
+    if (window->driver_private != NULL) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
@@ -1158,7 +1158,7 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     wl_eglstream_display_swap_interval(display->wlStreamDpy,
                                        surface->ctx.wlStreamResource,
                                        surface->swapInterval);
-    window->private = surface;
+    window->driver_private = surface;
     window->resize_callback = resize_callback;
     if (surface->wlEglWinVer >= WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE) {
         window->destroy_window_callback = destroy_callback;
