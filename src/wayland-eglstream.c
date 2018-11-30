@@ -21,7 +21,7 @@
  */
 
 #include "wayland-eglstream-server.h"
-#include "wayland-api-lock.h"
+#include "wayland-thread.h"
 #include "wayland-eglhandle.h"
 #include "wayland-egldisplay.h"
 #include "wayland-eglutils.h"

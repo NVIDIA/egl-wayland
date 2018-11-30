@@ -23,7 +23,7 @@
 #include "wayland-eglhandle.h"
 #include "wayland-egldisplay.h"
 #include "wayland-eglsurface.h"
-#include "wayland-api-lock.h"
+#include "wayland-thread.h"
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>

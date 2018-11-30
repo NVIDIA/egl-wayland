@@ -25,7 +25,7 @@
 #endif
 
 #include "wayland-eglutils.h"
-#include "wayland-api-lock.h"
+#include "wayland-thread.h"
 #include "wayland-eglhandle.h"
 #include <stdlib.h>
 #include <unistd.h>

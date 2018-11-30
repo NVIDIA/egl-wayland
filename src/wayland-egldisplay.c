@@ -24,7 +24,7 @@
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
 #include "wayland-eglstream-server.h"
-#include "wayland-api-lock.h"
+#include "wayland-thread.h"
 #include "wayland-eglsurface.h"
 #include "wayland-eglhandle.h"
 #include "wayland-eglutils.h"
@@ -195,28 +195,40 @@ static const struct wl_callback_listener sync_listener = {
     sync_callback
 };
 
+struct wl_event_queue* wlGetEventQueue(struct wl_display *display)
+{
+    WlThread *wlThread = wlGetThread();
+    struct wl_event_queue *queue = NULL;
+
+    if (wlThread != NULL) {
+        if (wlThread->queue == NULL) {
+            wlThread->queue = wl_display_create_queue(display);
+        }
+        queue = wlThread->queue;
+    }
+
+    return queue;
+}
+
 int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
 {
+    struct wl_display *wrapper;
     struct wl_callback *callback;
     int ret = 0, done = 0;
 
-    callback = wl_display_sync(display->nativeDpy);
-    wl_proxy_set_queue((struct wl_proxy *)callback, queue);
+    wrapper = wl_proxy_create_wrapper(display->nativeDpy);
+    wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
+    callback = wl_display_sync(wrapper);
+    wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
     ret = wl_callback_add_listener(callback, &sync_listener, &done);
 
     while (ret != -1 && !done) {
         /* We are handing execution control over to Wayland here, so we need to
          * release the lock just in case it re-enters the external platform (e.g
          * calling into EGL or any of the configured wayland callbacks)
-         *
-         * XXX: Note that we are using display->wlQueue. If another
-         *      thread destroys display while we are still dispatching
-         *      events, it will become invalid. We need finer-grained locks to
-         *      solve this issue.
          */
         wlExternalApiUnlock();
-        ret = wl_display_dispatch_queue(display->nativeDpy,
-                                        queue);
+        ret = wl_display_dispatch_queue(display->nativeDpy, queue);
         wlExternalApiLock();
     }
 
@@ -257,12 +269,6 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
     if (skipDestroy != EGL_TRUE || display->ownNativeDpy) {
         if (display->wlRegistry) {
             wl_registry_destroy(display->wlRegistry);
-        }
-        if (display->wlQueue) {
-            wl_event_queue_destroy(display->wlQueue);
-        }
-        if (display->wlDamageEventQueue) {
-            wl_event_queue_destroy(display->wlDamageEventQueue);
         }
         if (display->wlStreamDpy) {
             wl_eglstream_display_destroy(display->wlStreamDpy);
@@ -327,14 +333,16 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                                          void *nativeDpy,
                                          const EGLAttrib *attribs)
 {
-    WlEglPlatformData *pData        = (WlEglPlatformData *)data;
-    WlEglDeviceDpy    *devDpy       = NULL;
-    WlEglDeviceDpy    *tmpDpy       = NULL;
-    WlEglDisplay      *display      = NULL;
-    WlEglDisplay      *dpy          = NULL;
-    EGLBoolean         ownNativeDpy = EGL_FALSE;
-    EGLint             numDevices   = 0;
-    int                ret          = 0;
+    WlEglPlatformData     *pData        = (WlEglPlatformData *)data;
+    WlEglDeviceDpy        *devDpy       = NULL;
+    WlEglDeviceDpy        *tmpDpy       = NULL;
+    WlEglDisplay          *display      = NULL;
+    WlEglDisplay          *dpy          = NULL;
+    EGLBoolean             ownNativeDpy = EGL_FALSE;
+    EGLint                 numDevices   = 0;
+    int                    ret          = 0;
+    struct wl_display     *wrapper      = NULL;
+    struct wl_event_queue *queue        = NULL;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -376,18 +384,24 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display->ownNativeDpy = ownNativeDpy;
     display->nativeDpy    = nativeDpy;
 
+    queue = wlGetEventQueue(nativeDpy);
+    if (queue == NULL) {
+        wlExternalApiUnlock();
+        goto fail;
+    }
+
+    wrapper = wl_proxy_create_wrapper(nativeDpy);
+    wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
+
     /* Listen to wl_registry events and make a roundtrip in order to find the
      * wl_eglstream_display global object */
-    display->wlQueue = wl_display_create_queue(nativeDpy);
-    display->wlDamageEventQueue = wl_display_create_queue(nativeDpy);
-    display->wlRegistry = wl_display_get_registry(nativeDpy);
-    wl_proxy_set_queue((struct wl_proxy *)display->wlRegistry,
-                        display->wlQueue);
+    display->wlRegistry = wl_display_get_registry(wrapper);
+    wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
     ret = wl_registry_add_listener(display->wlRegistry,
                                    &registry_listener,
                                    display);
     if (ret == 0) {
-        ret = wlEglRoundtrip(display, display->wlQueue);
+        ret = wlEglRoundtrip(display, queue);
     }
     if (ret < 0 || !display->wlStreamDpy) {
         wlExternalApiUnlock();
@@ -396,22 +410,16 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 
     /* Listen to wl_eglstream_display events and make another roundtrip so we
      * catch any bind-related event (e.g. server capabilities) */
-    wl_proxy_set_queue((struct wl_proxy *)display->wlStreamDpy,
-                       display->wlQueue);
     ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
                                             &eglstream_display_listener,
                                             display);
     if (ret == 0) {
-        ret = wlEglRoundtrip(display, display->wlQueue);
+        ret = wlEglRoundtrip(display, queue);
     }
     if (ret < 0) {
         wlExternalApiUnlock();
         goto fail;
     }
-
-    /* Restore global registry default queue as other clients may rely on it and
-       we are no longer interested in registry events */
-    wl_proxy_set_queue((struct wl_proxy *)display->wlRegistry, NULL);
 
     /*
      * Seek for the desired device in wlEglDeviceDpyList. If found, use it;

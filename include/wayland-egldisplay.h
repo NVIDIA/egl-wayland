@@ -48,11 +48,6 @@ typedef struct WlEglDisplayRec {
     EGLBoolean         ownNativeDpy;
     struct wl_display *nativeDpy;
 
-    // wlQueue is used by main thread along with  display sync points or frame syncpoint
-    // depending upon where it is used
-    struct wl_event_queue          *wlQueue;
-    // wlDamageEventQueue is only used by damage_thread along with display sync points
-    struct wl_event_queue          *wlDamageEventQueue;
     struct wl_registry             *wlRegistry;
     struct wl_eglstream_display    *wlStreamDpy;
     struct wl_eglstream_controller *wlStreamCtl;
@@ -106,6 +101,7 @@ const char* wlEglQueryStringExport(void *data,
                                    EGLDisplay dpy,
                                    EGLExtPlatformString name);
 
+struct wl_event_queue* wlGetEventQueue(struct wl_display *display);
 int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue);
 
 #ifdef __cplusplus

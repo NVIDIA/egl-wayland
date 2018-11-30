@@ -14,7 +14,7 @@ if cc.has_argument('-Wpedantic')
 endif
 
 src = [
-    'wayland-api-lock.c',
+    'wayland-thread.c',
     'wayland-egldisplay.c',
     'wayland-eglstream.c',
     'wayland-eglstream-server.c',

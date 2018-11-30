@@ -28,7 +28,7 @@ libnvidia_egl_wayland_la_LDFLAGS =                                              
     $(LINKER_FLAG_NO_UNDEFINED)
 
 libnvidia_egl_wayland_la_SOURCES =                            \
-    src/wayland-api-lock.c                                    \
+    src/wayland-thread.c                                      \
     src/wayland-egldisplay.c                                  \
     src/wayland-eglstream.c                                   \
     src/wayland-eglstream-server.c                            \

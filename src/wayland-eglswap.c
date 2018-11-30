@@ -22,7 +22,7 @@
 
 #include "wayland-eglswap.h"
 #include "wayland-eglstream-client-protocol.h"
-#include "wayland-api-lock.h"
+#include "wayland-thread.h"
 #include "wayland-egldisplay.h"
 #include "wayland-eglsurface.h"
 #include "wayland-eglhandle.h"
@@ -36,13 +36,14 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
 
 EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglSurface, EGLint *rects, EGLint n_rects)
 {
-    WlEglDisplay      *display     = (WlEglDisplay *)eglDisplay;
-    WlEglPlatformData *data        = display->data;
-    WlEglSurface      *surface     = (WlEglSurface *)eglSurface;
-    EGLStreamKHR       eglStream;
-    EGLBoolean         isOffscreen = EGL_FALSE;
-    EGLBoolean         res;
-    EGLint             err;
+    WlEglDisplay          *display     = (WlEglDisplay *)eglDisplay;
+    WlEglPlatformData     *data        = display->data;
+    WlEglSurface          *surface     = (WlEglSurface *)eglSurface;
+    struct wl_event_queue *queue       = NULL;
+    EGLStreamKHR           eglStream   = EGL_NO_STREAM_KHR;
+    EGLBoolean             isOffscreen = EGL_FALSE;
+    EGLBoolean             res;
+    EGLint                 err;
 
     wlExternalApiLock();
 
@@ -59,12 +60,18 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
     isOffscreen = surface->ctx.isOffscreen;
 
     if (!isOffscreen) {
+        queue = wlGetEventQueue(display->nativeDpy);
+        if (queue == NULL) {
+            err = EGL_CONTEXT_LOST; /* XXX: Is this the right error? */
+            goto fail;
+        }
+
         if (!wlEglIsWaylandWindowValid(surface->wlEglWin)) {
             err = EGL_BAD_SURFACE;
             goto fail;
         }
 
-        wlEglWaitFrameSync(surface, display->wlQueue);
+        wlEglWaitFrameSync(surface, queue);
     }
 
     /* Save the internal EGLDisplay, EGLSurface and EGLStream handles, as
@@ -98,10 +105,10 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         if (surface->ctx.useDamageThread) {
             surface->ctx.framesProduced++;
         } else {
-            res = wlEglSendDamageEvent(surface);
+            res = wlEglSendDamageEvent(surface, queue);
         }
     }
-    wlEglCreateFrameSync(surface, display->wlQueue);
+    wlEglCreateFrameSync(surface, queue);
     wlExternalApiUnlock();
 
 done:
