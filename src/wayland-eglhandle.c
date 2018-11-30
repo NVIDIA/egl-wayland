@@ -63,6 +63,8 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
     GET_PROC(queryString,                 eglQueryString);
     GET_PROC(queryDevices,                eglQueryDevicesEXT);
 
+    /* TODO: use eglGetPlatformDisplay instead of eglGetPlatformDisplayEXT
+             if EGL 1.5 is available                                      */
     GET_PROC(getPlatformDisplay,          eglGetPlatformDisplayEXT);
     GET_PROC(initialize,                  eglInitialize);
     GET_PROC(terminate,                   eglTerminate);
@@ -105,6 +107,8 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 
     /* Stream flush */
     GET_PROC(streamFlush,                 eglStreamFlushNV);
+
+    GET_PROC(queryDisplayAttrib,          eglQueryDisplayAttribKHR);
 
 #undef GET_PROC
 

@@ -78,6 +78,9 @@ typedef struct WlEglSurfaceRec {
 
 extern struct wl_list wlEglSurfaceList;
 
+WL_EXPORT
+EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface);
+
 EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
                                                 EGLConfig config,
                                                 void *nativeWin,

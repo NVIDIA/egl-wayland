@@ -67,9 +67,12 @@ typedef struct WlEglDisplayRec {
         unsigned int stream_fifo_synchronous    : 1;
         unsigned int stream_sync                : 1;
         unsigned int stream_flush               : 1;
+        unsigned int display_reference          : 1;
     } exts;
 
     struct wl_list link;
+    EGLBoolean useRefCount;
+    unsigned int refCount;
 } WlEglDisplay;
 
 EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy);

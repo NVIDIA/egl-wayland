@@ -76,8 +76,8 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
 
 static void
 wayland_throttleCallback(void *data,
-                          struct wl_callback *callback,
-                          uint32_t time)
+                         struct wl_callback *callback,
+                         uint32_t time)
 {
     WlEglSurface *surface = (WlEglSurface *)data;
 
@@ -186,8 +186,10 @@ damage_thread(void *args)
             ok = 0;
         }
 
+        // We only expect a valid wlEglWin to be set when using
+        // a surface created with EGL_KHR_platform_wayland.
         if(!wlEglIsWaylandDisplay(display->nativeDpy) ||
-           !wlEglIsWaylandWindowValid(surface->wlEglWin)) {
+           (surface->isSurfaceProducer && !wlEglIsWaylandWindowValid(surface->wlEglWin))) {
             ok = 0;
         }
         // If not done, keep handling frames
@@ -318,6 +320,25 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
 
     if (resource) {
         wl_buffer_destroy(resource);
+    }
+}
+
+static void
+discard_surface_context(WlEglSurface *surface)
+{
+    /* If the surface context is marked as attached, it means the compositor
+     * might still be using the resources because some content was actually
+     * displayed. In that case, defer its destruction until we make sure the
+     * compositor doesn't need it anymore (i.e. upon stream release);
+     * otherwise, we can just destroy it right away */
+    if (surface->ctx.isAttached) {
+        WlEglSurfaceCtx *ctx = malloc(sizeof(WlEglSurfaceCtx));
+        if (ctx) {
+            memcpy(ctx, &surface->ctx, sizeof(*ctx));
+            wl_list_insert(&surface->oldCtxList, &ctx->link);
+        }
+    } else {
+        destroy_surface_context(surface, &surface->ctx);
     }
 }
 
@@ -720,8 +741,10 @@ create_surface_context(WlEglSurface *surface)
     }
 
     /* Width and height are the first and second attributes respectively */
-    surface->attribs[1] = window->width;
-    surface->attribs[3] = window->height;
+    if (surface->isSurfaceProducer) {
+        surface->attribs[1] = window->width;
+        surface->attribs[3] = window->height;
+    }
 
     /* First, create the underlying wl_eglstream and EGLStream */
     err = create_surface_stream(surface, queue);
@@ -757,17 +780,19 @@ create_surface_context(WlEglSurface *surface)
         goto fail;
     }
 
-    /* Finally, create the surface producer */
-    surface->ctx.eglSurface =
-        data->egl.createStreamProducerSurface(display->devDpy->eglDisplay,
-                                              surface->eglConfig,
-                                              surface->ctx.eglStream,
-                                              surface->attribs);
-    if (surface->ctx.eglSurface == EGL_NO_SURFACE) {
-        err = data->egl.getError();
-        goto fail;
+    if (surface->isSurfaceProducer) {
+        /* Finally, create the surface producer */
+        surface->ctx.eglSurface =
+            data->egl.createStreamProducerSurface(display->devDpy->eglDisplay,
+                                                  surface->eglConfig,
+                                                  surface->ctx.eglStream,
+                                                  surface->attribs);
+        if (surface->ctx.eglSurface == EGL_NO_SURFACE) {
+            err = data->egl.getError();
+            goto fail;
+        }
+        wl_display_flush(display->nativeDpy);
     }
-    wl_display_flush(display->nativeDpy);
 
     /* Check whether we should use a damage thread */
     surface->ctx.useDamageThread =
@@ -786,12 +811,14 @@ create_surface_context(WlEglSurface *surface)
     }
 
     /* Cache current window size and displacement for future checks */
-    surface->width = window->width;
-    surface->height = window->height;
-    surface->dx = window->dx;
-    surface->dy = window->dy;
-    window->attached_width = surface->width;
-    window->attached_height = surface->height;
+    if (surface->isSurfaceProducer) {
+        surface->width = window->width;
+        surface->height = window->height;
+        surface->dx = window->dx;
+        surface->dy = window->dy;
+        window->attached_width = surface->width;
+        window->attached_height = surface->height;
+    }
 
     return EGL_SUCCESS;
 
@@ -800,13 +827,26 @@ fail:
     return err;
 }
 
+EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
+{
+    wlExternalApiLock();
+    wl_list_init(&surface->oldCtxList);
+    wl_list_insert(&wlEglSurfaceList, &surface->link);
+    if (create_surface_context(surface) != EGL_SUCCESS) {
+        wlExternalApiUnlock();
+        return EGL_FALSE;
+    }
+
+    wlExternalApiUnlock();
+    return EGL_TRUE;
+}
+
 static void
 resize_callback(struct wl_egl_window *window, void *data)
 {
     WlEglDisplay      *display = NULL;
     WlEglPlatformData *pData   = NULL;
     WlEglSurface      *surface = (WlEglSurface *)data;
-    WlEglSurfaceCtx   *ctx     = NULL;
     EGLint             err     = EGL_SUCCESS;
 
     if (!window || !surface) {
@@ -831,20 +871,7 @@ resize_callback(struct wl_egl_window *window, void *data)
         //   pending frames
         finish_wl_eglstream_damage_thread(surface, &surface->ctx, 0);
 
-        /* If the surface context is marked as attached, it means the compositor
-         * might still be using the resources because some content was actually
-         * displayed. In that case, defer its destruction until we make sure the
-         * compositor doesn't need it anymore (i.e. upon stream release);
-         * otherwise, we can just destroy it right away */
-        if (surface->ctx.isAttached) {
-            ctx = malloc(sizeof(WlEglSurfaceCtx));
-            if (ctx) {
-                memcpy(ctx, &surface->ctx, sizeof(*ctx));
-                wl_list_insert(&surface->oldCtxList, &ctx->link);
-            }
-        } else {
-            destroy_surface_context(surface, &surface->ctx);
-        }
+        discard_surface_context(surface);
         surface->ctx.wlStreamResource = NULL;
         surface->ctx.isAttached = EGL_FALSE;
         surface->ctx.eglSurface = EGL_NO_SURFACE;
@@ -1106,6 +1133,8 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     surface->ctx.eglStream = EGL_NO_STREAM_KHR;
     surface->ctx.eglSurface = EGL_NO_SURFACE;
     surface->ctx.isOffscreen = EGL_FALSE;
+    surface->isSurfaceProducer = EGL_TRUE;
+
     getWlEglWindowVersionAndSurface(window,
                                     &surface->wlEglWinVer,
                                     &surface->wlSurface);

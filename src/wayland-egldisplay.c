@@ -262,6 +262,13 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
     EGLBoolean         fullTerminate = EGL_FALSE;
     EGLBoolean         res           = EGL_TRUE;
 
+    if (display->useRefCount) {
+        display->refCount -= 1;
+        if (display->refCount > 0) {
+            return EGL_TRUE;
+        }
+    }
+
     /* First, destroy any surface associated to the given display. Then
      * destroy the display connection itself */
     wlEglDestroyAllSurfaces(display);
@@ -341,12 +348,52 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     EGLBoolean             ownNativeDpy = EGL_FALSE;
     EGLint                 numDevices   = 0;
     int                    ret          = 0;
+    int                    nAttribs     = 0;
+    EGLint                *attribs2     = NULL;
+    int                    i            = 0;
+    EGLDisplay             eglDisplay   = NULL;
+    EGLDeviceEXT           eglDevice    = NULL;
+    EGLint                 err          = EGL_SUCCESS;
     struct wl_display     *wrapper      = NULL;
     struct wl_event_queue *queue        = NULL;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
         return EGL_NO_DISPLAY;
+    }
+
+    if (!pData->egl.queryDevices(1, &eglDevice, &numDevices) || numDevices == 0) {
+        goto fail;
+    }
+
+    /* We need to convert EGLAttrib style attributes to EGLint style attributes
+       before calling eglGetPlatformDisplayEXT which takes an EGLint* */
+
+    if (attribs) {
+        while (attribs[nAttribs] != EGL_NONE) {
+            nAttribs += 2;
+        }
+
+        attribs2 = calloc(nAttribs + 1, sizeof(EGLint));
+        if (!attribs2) {
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
+
+        for (i = 0; i < nAttribs; i += 2) {
+            attribs2[i] = (EGLint) attribs[i];
+            attribs2[i+1] = (EGLint) attribs[i+1];
+        }
+
+        attribs2[nAttribs] = EGL_NONE;
+    }
+
+    eglDisplay = pData->egl.getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT,
+                                               eglDevice,
+                                               attribs2);
+    free(attribs2);
+    if (eglDisplay == EGL_NO_DISPLAY) {
+        goto fail;
     }
 
     wlExternalApiLock();
@@ -366,7 +413,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         wl_display_dispatch_pending(nativeDpy);
     } else {
         wl_list_for_each(display, &wlEglDisplayList, link) {
-            if (display->nativeDpy == nativeDpy) {
+            if (display->nativeDpy == nativeDpy && display->devDpy->eglDisplay == eglDisplay) {
                 wlExternalApiUnlock();
                 return (EGLDisplay)display;
             }
@@ -376,6 +423,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display = calloc(1, sizeof(*display));
     if (!display) {
         wlExternalApiUnlock();
+        err = EGL_BAD_ALLOC;
         goto fail;
     }
 
@@ -387,6 +435,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     queue = wlGetEventQueue(nativeDpy);
     if (queue == NULL) {
         wlExternalApiUnlock();
+        err = EGL_BAD_ALLOC;
         goto fail;
     }
 
@@ -405,6 +454,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     }
     if (ret < 0 || !display->wlStreamDpy) {
         wlExternalApiUnlock();
+        err = EGL_BAD_ALLOC;
         goto fail;
     }
 
@@ -418,6 +468,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     }
     if (ret < 0) {
         wlExternalApiUnlock();
+        err = EGL_BAD_ALLOC;
         goto fail;
     }
 
@@ -427,32 +478,23 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
      */
     wl_list_for_each(devDpy, &wlEglDeviceDpyList, link) {
         /* TODO: Add support for multiple devices/device selection */
-        display->devDpy = devDpy;
-        display->devDpy->refCount++;
-        break;
+        if (devDpy->eglDisplay == eglDisplay) {
+            display->devDpy = devDpy;
+            display->devDpy->refCount++;
+            break;
+        }
     }
 
     if (!display->devDpy) {
-        wlExternalApiUnlock();
-
         devDpy = calloc(1, sizeof(*devDpy));
         if (!devDpy) {
+            wlExternalApiUnlock();
+            err = EGL_BAD_ALLOC;
             goto fail;
         }
 
-        if (!pData->egl.queryDevices(1, &devDpy->eglDevice, &numDevices) || numDevices == 0) {
-            goto fail;
-        }
-
-        /* TODO: Parse <attribs> and filter out incompatible attribues */
-        devDpy->eglDisplay =
-            pData->egl.getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT,
-                                          devDpy->eglDevice,
-                                          NULL);
-        if (devDpy->eglDisplay == EGL_NO_DISPLAY) {
-            goto fail;
-        }
-        wlExternalApiLock();
+        devDpy->eglDevice = eglDevice;
+        devDpy->eglDisplay = eglDisplay;
     }
 
     // Due to temporary unlock of wlMutex in wlEglRoundtrip, it is possible
@@ -514,14 +556,19 @@ fail:
 
     free(devDpy);
 
+    if (err != EGL_SUCCESS) {
+        wlEglSetError(data, err);
+    }
+
     return EGL_NO_DISPLAY;
 }
 
 EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
 {
-    WlEglDisplay      *display = (WlEglDisplay *)dpy;
-    WlEglPlatformData *data    = display->data;
-    EGLBoolean         res     = EGL_FALSE;
+    WlEglDisplay      *display     = (WlEglDisplay *)dpy;
+    WlEglPlatformData *data        = display->data;
+    EGLBoolean         res         = EGL_FALSE;
+    EGLAttrib          useRefCount = EGL_FALSE;
 
     dpy = display->devDpy->eglDisplay;
     res = data->egl.initialize(dpy, major, minor);
@@ -543,10 +590,20 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         CACHE_EXT(NV,  stream_fifo_synchronous);
         CACHE_EXT(NV,  stream_sync);
         CACHE_EXT(NV,  stream_flush);
+        CACHE_EXT(KHR, display_reference);
 
 #undef CACHE_EXT
 
         wlExternalApiUnlock();
+    }
+
+    if (display->exts.display_reference) {
+        data->egl.queryDisplayAttrib(dpy, EGL_TRACK_REFERENCES_KHR, &useRefCount);
+        display->useRefCount = (EGLBoolean) useRefCount;
+    }
+
+    if (display->useRefCount) {
+        display->refCount += 1;
     }
 
     return res;
