@@ -87,7 +87,7 @@ AX_CHECK_LINK_FLAG([-Xlinker --no-undefined],
       [AC_SUBST([LINKER_FLAG_NO_UNDEFINED], [""])])
 
 # Default CFLAGS
-CFLAGS="$CFLAGS -Wall -Wno-deprecated-declarations -Werror -include config.h"
+CFLAGS="$CFLAGS -Wall -Werror -include config.h"
 
 PKG_NOARCH_INSTALLDIR
 

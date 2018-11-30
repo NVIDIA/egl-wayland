@@ -4,18 +4,14 @@ else
   libdl = []
 endif
 
+add_project_arguments('-Wall', language : 'c')
+add_project_arguments('-Werror', language : 'c')
 add_project_arguments('-fvisibility=hidden', language : 'c')
 add_project_link_arguments('-Wl,-Bsymbolic', language : 'c')
 
-foreach arg : [
-               'unused-parameter',
-               'pedantic',
-               'deprecated-declarations',
-              ]
-        if cc.has_argument('-W' + arg)
-                add_project_arguments('-Wno-' + arg, language : 'c')
-        endif
-endforeach
+if cc.has_argument('-Wpedantic')
+        add_project_arguments('-Wno-pedantic', language : 'c')
+endif
 
 src = [
     'wayland-api-lock.c',

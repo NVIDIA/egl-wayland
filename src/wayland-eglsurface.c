@@ -84,7 +84,7 @@ wayland_throttleCallback(void *data,
 
     surface->throttleCallback = NULL;
     wl_callback_destroy(callback);
-};
+}
 
 static const struct wl_callback_listener throttle_listener = {
     wayland_throttleCallback
