@@ -244,9 +244,8 @@ wl_eglstream_display_global_bind(struct wl_client *client,
                                  uint32_t version,
                                  uint32_t id)
 {
-    struct wl_eglstream_display *wlStreamDpy = NULL;
-    struct wl_resource          *resource    = NULL;
-    int                          caps        = 0;
+    struct wl_eglstream_display *wlStreamDpy  = NULL;
+    struct wl_resource          *resource     = NULL;
 
     wlStreamDpy = (struct wl_eglstream_display *)data;
     resource    = wl_resource_create(client,
@@ -263,21 +262,8 @@ wl_eglstream_display_global_bind(struct wl_client *client,
                                    data,
                                    NULL);
 
-    /* Advertise server capabilities */
-    if (wlStreamDpy->exts.stream_cross_process_fd) {
-        caps |= WL_EGLSTREAM_DISPLAY_CAP_STREAM_FD;
-    }
-    if (wlStreamDpy->exts.stream_attrib &&
-        wlStreamDpy->exts.stream_remote &&
-        wlStreamDpy->exts.stream_socket) {
-        if (wlStreamDpy->exts.stream_socket_inet) {
-            caps |= WL_EGLSTREAM_DISPLAY_CAP_STREAM_INET;
-        }
-        if (wlStreamDpy->exts.stream_socket_unix) {
-            caps |= WL_EGLSTREAM_DISPLAY_CAP_STREAM_SOCKET;
-        }
-    }
-    wl_eglstream_display_send_caps(resource, caps);
+
+    wl_eglstream_display_send_caps(resource, wlStreamDpy->supported_caps);
 }
 
 EGLBoolean
@@ -287,6 +273,7 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
 {
     struct wl_eglstream_display *wlStreamDpy = NULL;
     const char                  *exts        = NULL;
+    char                        *env         = NULL;
 
     /* Check whether there's an EGLDisplay already bound to the given
      * wl_display */
@@ -299,9 +286,10 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
         return EGL_FALSE;
     }
 
-    wlStreamDpy->data       = data;
-    wlStreamDpy->wlDisplay  = wlDisplay;
-    wlStreamDpy->eglDisplay = eglDisplay;
+    wlStreamDpy->data          = data;
+    wlStreamDpy->wlDisplay     = wlDisplay;
+    wlStreamDpy->eglDisplay    = eglDisplay;
+    wlStreamDpy->caps_override = 0;
 
     exts = data->egl.queryString(eglDisplay, EGL_EXTENSIONS);
 
@@ -317,6 +305,30 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
     CACHE_EXT(NV,  stream_socket_unix);
 
 #undef CACHE_EXT
+
+    /* Advertise server capabilities */
+    if (wlStreamDpy->exts.stream_cross_process_fd) {
+        wlStreamDpy->supported_caps |= WL_EGLSTREAM_DISPLAY_CAP_STREAM_FD;
+    }
+    if (wlStreamDpy->exts.stream_attrib &&
+        wlStreamDpy->exts.stream_remote &&
+        wlStreamDpy->exts.stream_socket) {
+        if (wlStreamDpy->exts.stream_socket_inet) {
+            wlStreamDpy->supported_caps |= WL_EGLSTREAM_DISPLAY_CAP_STREAM_INET;
+        }
+        if (wlStreamDpy->exts.stream_socket_unix) {
+            wlStreamDpy->supported_caps |= WL_EGLSTREAM_DISPLAY_CAP_STREAM_SOCKET;
+        }
+    }
+
+    env = getenv("WL_EGLSTREAM_CAP_OVERRIDE");
+    if (env) {
+        int serverCapOverride = atoi(env);
+        wlStreamDpy->caps_override = (wlStreamDpy->supported_caps
+                                      & serverCapOverride) !=
+                                      wlStreamDpy->supported_caps;
+        wlStreamDpy->supported_caps &= serverCapOverride;
+    }
 
     wlStreamDpy->wl_eglstream_interface.destroy = destroy_wl_eglstream;
     wlStreamDpy->global = wl_global_create(wlDisplay,

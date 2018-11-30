@@ -113,8 +113,10 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
         /* eglCreateStreamFromFileDescriptorKHR from
          * EGL_KHR_stream_cross_process_fd does not take attributes. Thus, only
          * EGL_WAYLAND_EGLSTREAM_WL should have been specified and processed
-         * above. */
-        if (nAttribs != 0) {
+         * above. caps_override is an exception to this, since the wayland
+         * compositor calling into this function wouldn't be aware of an
+         * override in place */
+        if (nAttribs != 0 && !wlStreamDpy->caps_override) {
             err = EGL_BAD_ATTRIBUTE;
             goto fail;
         }

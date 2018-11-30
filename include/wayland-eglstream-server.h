@@ -92,6 +92,9 @@ struct wl_eglstream_display {
         int stream_socket_unix      : 1;
     } exts;
 
+    int caps_override               : 1;
+    int supported_caps;
+
     struct wl_buffer_interface wl_eglstream_interface;
 
     struct wl_list link;
