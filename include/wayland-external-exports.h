@@ -60,6 +60,9 @@
 #define EGL_EXTERNAL_PLATFORM_VERSION_MINOR WAYLAND_EXTERNAL_VERSION_MINOR
 #include <eglexternalplatform.h>
 
+#include <wayland-util.h>
+
+WL_EXPORT
 EGLBoolean loadEGLExternalPlatform(int major, int minor,
                                    const EGLExtDriver *driver,
                                    EGLExtPlatform *platform);
