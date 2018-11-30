@@ -40,12 +40,16 @@
 #define WL_LIST_INIT(head) { .prev = (head), .next = (head) }
 #endif
 
+#define HAS_MINCORE (!defined(__QNX__) && !defined(__INTEGRITY))
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 EGLBoolean wlEglFindExtension(const char *extension, const char *extensions);
+#if HAS_MINCORE
 EGLBoolean wlEglPointerIsDereferencable(void *p);
+#endif
 void wlEglSetErrorCallback(WlEglPlatformData *data,
                            EGLint err,
                            const char *file,

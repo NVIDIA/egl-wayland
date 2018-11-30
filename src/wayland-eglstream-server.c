@@ -100,6 +100,8 @@ handle_create_stream(struct wl_client *client,
         case WL_EGLSTREAM_HANDLE_TYPE_INET:
             sockAddr.sin_family = AF_INET;
             wlStream->isInet    = EGL_TRUE;
+            /* Close the given dummy fd */
+            close(handle);
             break;
 
         case WL_EGLSTREAM_HANDLE_TYPE_SOCKET:

@@ -23,6 +23,9 @@
 #ifndef WAYLAND_EGLSTREAM_H
 #define WAYLAND_EGLSTREAM_H
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif

@@ -38,13 +38,15 @@ static struct wl_list wlEglDeviceDpyList = WL_LIST_INIT(&wlEglDeviceDpyList);
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 {
+#if HAS_MINCORE
+    void *first_pointer = NULL;
     EGLBoolean ret;
 
     if (!wlEglPointerIsDereferencable(nativeDpy)) {
         return EGL_FALSE;
     }
 
-    void *first_pointer = *(void **) nativeDpy;
+    first_pointer = *(void **) nativeDpy;
 
     /* wl_display is a wl_proxy, which is a wl_object.
      * wl_object's first element points to the interfacetype.
@@ -52,6 +54,14 @@ EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
     ret = (first_pointer == &wl_display_interface) ? EGL_TRUE : EGL_FALSE;
 
     return ret;
+#else
+    /* we return EGL_TRUE in order to always assume a valid wayland
+     * display is given so that we bypass all the checks that would
+     * prevent any of the functions in this library to work
+     * otherwise.
+     */
+    return EGL_TRUE;
+#endif
 }
 
 EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
@@ -61,8 +71,17 @@ EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
     if (val && !strcasecmp(val, "wayland")) {
         return EGL_TRUE;
     }
-
+#if HAS_MINCORE
     return wlEglIsWaylandDisplay(nativeDpy);
+#else
+    /* wlEglIsWaylandDisplay always returns true if  mincore(2)
+     * is not available, hence we cannot ascertain whether the
+     * the nativeDpy is wayland.
+     * Note: this effectively forces applications to use
+     * eglGetPlatformDisplay() instead of eglGetDisplay().
+     */
+    return EGL_FALSE;
+#endif
 }
 
 EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy)
@@ -262,12 +281,28 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
     EGLBoolean         fullTerminate = EGL_FALSE;
     EGLBoolean         res           = EGL_TRUE;
 
+    /* We can only get here if the EGLDisplay belongs to the Wayland platform.
+     * However, if it is no longer a WlEglDisplay, it means we have already
+     * removed it from the list. Terminating an already terminated display
+     * has no effect as per the EGL specification. */
+    if (!wlEglIsWlEglDisplay(display)) {
+        return EGL_TRUE;
+    }
+
     if (display->useRefCount) {
         display->refCount -= 1;
         if (display->refCount > 0) {
             return EGL_TRUE;
         }
     }
+
+    /* Remove display from wlEglDisplayList before calling into
+     * wlEglDestroyAllSurfaces to avoid multiple threads trying to teminate
+     * the same display simultaneously. When wlEglDestroyAllSurfaces was
+     * called, wl external API lock could be released temporarily, which
+     * would allow multiple threads get the same display, enter
+     * terminateDisplay and lead to segmentation fault. */
+    wl_list_remove(&display->link);
 
     /* First, destroy any surface associated to the given display. Then
      * destroy the display connection itself */
@@ -302,9 +337,6 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
     }
 
     /* Destroy the external display */
-    if (display->link.prev && display->link.next) {
-        wl_list_remove(&display->link);
-    }
     free(display);
 
     /* XXX: Currently, we assume an internal EGLDisplay will only be used by a

@@ -36,6 +36,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <fcntl.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
@@ -58,6 +59,7 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
 {
     struct wl_surface *surface = NULL;
 
+#if HAS_MINCORE
     if (!window || !wlEglPointerIsDereferencable(window)) {
         return EGL_FALSE;
     }
@@ -69,6 +71,14 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
             return EGL_FALSE;
         }
     }
+#else
+    /*
+     * Note that dereferencing an invalid surface pointer could mean an old
+     * version of libwayland-egl.so is loaded, which may not support version
+     * member in wl_egl_window struct.
+     */
+    surface = window->surface;
+#endif
     /* wl_surface is a wl_proxy, which is a wl_object. wl_objects's first
      * element points to the interface type */
     return (((*(void **)surface)) == &wl_surface_interface);
@@ -610,7 +620,14 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
            goto fail;
         }
 
-        socket[1] = -1; /* unused */
+        /* Create a dummy fd to be feed into wayland. The fd will never be used,
+         * but wayland will abort if an invaild fd is given.
+         */
+        socket[1] = open("/dev/null", O_RDONLY);
+        if (socket[1] == -1) {
+           err = EGL_BAD_ALLOC;
+           goto fail;
+        }
     } else {
         /* Create a new socket pair for both EGLStream endpoints */
         ret = socketpair(AF_UNIX, SOCK_STREAM, 0, socket);
@@ -999,6 +1016,14 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
         return EGL_BAD_SURFACE;
     }
 
+    /* Remove surface from wlEglSurfaceList as early as possible to avoid
+     * multiple threads trying to destroy the same surface simultaneously.
+     * Inside destroy_surface_context and finish_wl_eglstream_damage_thread,
+     * wl external API lock could be released temporarily, which would allow
+     * multiple threads grab the same surface from wlEglSurfaceList, enter
+     * destroyEglSurface and lead to segmentation fault. */
+    wl_list_remove(&surface->link);
+
     if (!surface->ctx.isOffscreen) {
         // Force damage thread to exit before invalidating the window objects
         finish_wl_eglstream_damage_thread(surface, &surface->ctx, 1);
@@ -1030,7 +1055,6 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
 
     destroy_surface_context(surface, &surface->ctx);
 
-    wl_list_remove(&surface->link);
     free(surface);
 
     return (ret >= 0) ? EGL_SUCCESS : EGL_BAD_DISPLAY;
@@ -1041,7 +1065,7 @@ destroy_callback(void *data)
 {
     WlEglSurface *surface = (WlEglSurface*)data;
 
-    if (!surface) {
+    if (!surface || !wlEglIsWlEglDisplay(surface->wlEglDpy)) {
         return;
     }
 
@@ -1061,14 +1085,20 @@ getWlEglWindowVersionAndSurface(struct wl_egl_window *window,
      * 'window->version' replaced 'window->surface', we must check whether
      * 'window->version' is actually a valid pointer. If it is, we are dealing
      * with a wl_egl_window from an old implementation of libwayland-egl.so
+     * Note that this will be disabled if platfrom does not have
+     * mincore(2) to check whether a pointer is valid or not.
      */
+
+     *version = window->version;
+     *surface = window->surface;
+
+#if HAS_MINCORE
     if (wlEglPointerIsDereferencable((void *)(window->version))) {
         *version = 0;
         *surface = (struct wl_surface *)(window->version);
-    } else {
-        *version = window->version;
-        *surface = window->surface;
     }
+#endif
+
 }
 
 EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
@@ -1284,6 +1314,11 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
 {
     WlEglDisplay *display = (WlEglDisplay*)dpy;
     EGLBoolean    err     = EGL_SUCCESS;
+
+    if (!wlEglIsWlEglDisplay(display)) {
+        wlEglSetError(display->data, EGL_BAD_DISPLAY);
+        return EGL_FALSE;
+    }
 
     wlExternalApiLock();
     err = destroyEglSurface(dpy, eglSurface);

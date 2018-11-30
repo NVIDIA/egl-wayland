@@ -32,7 +32,7 @@
 #include <string.h>
 #include <stdio.h>
 
-#if !defined(__INTEGRITY)
+#if HAS_MINCORE
 #include <dlfcn.h> // Need dlsym() to load mincore() symbol dynamically.
 #endif
 
@@ -59,11 +59,9 @@ EGLBoolean wlEglFindExtension(const char *extension, const char *extensions)
     return EGL_FALSE;
 }
 
+#if HAS_MINCORE
 EGLBoolean wlEglPointerIsDereferencable(void *p)
 {
-#if defined(__INTEGRITY)
-    return EGL_TRUE;
-#else
     /*
      * BSD and Solaris have slightly different prototypes for mincore, but
      * they should be compatible with this.  BSD uses:
@@ -125,8 +123,8 @@ EGLBoolean wlEglPointerIsDereferencable(void *p)
      * can only succeed on dereferenceable memory ranges.
      */
     return (pMinCore((void *) addr, page_size, &unused) >= 0);
-#endif
 }
+#endif
 
 void wlEglSetErrorCallback(WlEglPlatformData *data,
                            EGLint error,
