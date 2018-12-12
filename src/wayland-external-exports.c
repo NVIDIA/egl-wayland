@@ -66,6 +66,7 @@ static int hookCmp(const void *elemA, const void *elemB)
 static void* wlEglGetHookAddressExport(void *data, const char *name)
 {
     WlEglHook *hook;
+    (void) data;
 
     hook = (WlEglHook *)bsearch((const void *)name,
                                 (const void *)wlEglHooksMap,

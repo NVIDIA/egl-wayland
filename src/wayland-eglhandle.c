@@ -44,7 +44,7 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 
     /* Cache the EGL driver version */
 #if EGL_EXTERNAL_PLATFORM_HAS(DRIVER_VERSION)
-    if (EGL_EXTERNAL_PLATFORM_SUPPORTS(apiMajor, apiMajor, DRIVER_VERSION)) {
+    if (EGL_EXTERNAL_PLATFORM_SUPPORTS(apiMajor, apiMinor, DRIVER_VERSION)) {
         res->egl.major = driver->major;
         res->egl.minor = driver->minor;
     }

@@ -90,6 +90,7 @@ wayland_throttleCallback(void *data,
                          uint32_t time)
 {
     WlEglSurface *surface = (WlEglSurface *)data;
+    (void) time;
 
     surface->throttleCallback = NULL;
     wl_callback_destroy(callback);
@@ -1215,6 +1216,9 @@ EGLSurface wlEglCreatePlatformPixmapSurfaceHook(EGLDisplay dpy,
                                                 const EGLAttrib *attribs)
 {
     WlEglDisplay *display = (WlEglDisplay*)dpy;
+    (void) config;
+    (void) nativePixmap;
+    (void) attribs;
 
     /* Wayland does not support pixmap types. See EGL_EXT_platform_wayland. */
     wlEglSetError(display->data, EGL_BAD_PARAMETER);

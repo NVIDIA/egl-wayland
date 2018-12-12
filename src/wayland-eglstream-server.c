@@ -60,6 +60,7 @@ destroy_wl_eglstream_resource(struct wl_resource *resource)
 static void
 destroy_wl_eglstream(struct wl_client *client, struct wl_resource *resource)
 {
+    (void) client;
     wl_resource_destroy(resource);
 }
 
@@ -224,6 +225,7 @@ handle_swap_interval(struct wl_client *client,
         wl_resource_get_user_data(displayResource);
     struct wl_eglstream *wlStream =
         wl_eglstream_display_get_stream(wlStreamDpy, streamResource);
+    (void) client;
 
     if (wlEglStreamSwapIntervalCallback(wlStreamDpy->data,
                                         wlStream->eglStream,
@@ -234,7 +236,7 @@ handle_swap_interval(struct wl_client *client,
     }
 }
 
-const static struct wl_eglstream_display_interface
+static const struct wl_eglstream_display_interface
 wl_eglstream_display_interface_impl = {
     handle_create_stream,
     handle_swap_interval,

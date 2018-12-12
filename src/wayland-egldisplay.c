@@ -67,6 +67,7 @@ EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
 {
     char *val = getenv("EGL_PLATFORM");
+    (void) data;
 
     if (val && !strcasecmp(val, "wayland")) {
         return EGL_TRUE;
@@ -146,6 +147,9 @@ registry_handle_global_remove(void *data,
                               struct wl_registry *registry,
                               uint32_t name)
 {
+    (void) data;
+    (void) registry;
+    (void) name;
 }
 
 static const struct wl_registry_listener registry_listener = {
@@ -159,6 +163,7 @@ eglstream_display_handle_caps(void *data,
                               int32_t caps)
 {
     WlEglDisplay *dpy = (WlEglDisplay *)data;
+    (void) wlStreamDpy;
 
 #define IS_CAP_SET(CAPS, CAP) (((CAPS)&(CAP)) != 0)
 
@@ -180,6 +185,8 @@ eglstream_display_handle_swapinterval_override(
                                     struct wl_buffer *streamResource)
 {
     WlEglSurface *surf = NULL;
+    (void) data;
+    (void) wlStreamDpy;
 
     wl_list_for_each(surf, &wlEglSurfaceList, link) {
         if (surf->ctx.wlStreamResource == streamResource) {
@@ -205,6 +212,7 @@ static void
 sync_callback(void *data, struct wl_callback *callback, uint32_t serial)
 {
     int *done = data;
+    (void) serial;
 
     *done = 1;
     wl_callback_destroy(callback);
