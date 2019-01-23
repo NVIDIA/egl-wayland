@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2018, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -68,6 +68,7 @@ typedef struct WlEglSurfaceRec {
     struct wl_list  oldCtxList;
 
     EGLint swapInterval;
+    EGLint fifoLength;
 
     struct wl_callback    *throttleCallback;
 

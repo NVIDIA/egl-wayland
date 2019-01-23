@@ -173,6 +173,54 @@ done:
     return EGL_TRUE;
 }
 
+EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
+    WlEglDisplay          *display = surface->wlEglDpy;
+    struct wl_event_queue *queue   = NULL;
+
+    wlExternalApiLock();
+
+    queue = wlGetEventQueue(display);
+    if (queue == NULL) {
+        return EGL_FALSE;
+    }
+
+    wlEglWaitFrameSync(surface, queue);
+
+    wlExternalApiUnlock();
+
+    return EGL_TRUE;
+}
+
+EGLBoolean wlEglPostPresentExport(WlEglSurface *surface) {
+    WlEglDisplay          *display = surface->wlEglDpy;
+    WlEglPlatformData     *data    = display->data;
+    struct wl_event_queue *queue   = NULL;
+    EGLBoolean             res     = EGL_TRUE;
+
+    if (display->exts.stream_flush) {
+        data->egl.streamFlush((EGLDisplay) display, surface->ctx.eglStream);
+    }
+
+    wlExternalApiLock();
+
+    queue = wlGetEventQueue(display);
+    if (queue == NULL) {
+        return EGL_FALSE;
+    }
+
+    if (surface->ctx.useDamageThread) {
+        surface->ctx.framesProduced++;
+    } else {
+        res = wlEglSendDamageEvent(surface, queue);
+    }
+
+    wlEglCreateFrameSync(surface, queue);
+
+    wlExternalApiUnlock();
+
+    return res;
+}
+
 EGLint wlEglStreamSwapIntervalCallback(WlEglPlatformData *data,
                                        EGLStreamKHR stream,
                                        EGLint *interval)

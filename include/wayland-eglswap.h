@@ -26,6 +26,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include "wayland-eglhandle.h"
+#include "wayland-eglsurface.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -41,6 +42,12 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval);
 EGLint wlEglStreamSwapIntervalCallback(WlEglPlatformData *data,
                                        EGLStreamKHR stream,
                                        EGLint *interval);
+
+WL_EXPORT
+EGLBoolean wlEglPrePresentExport(WlEglSurface *surface);
+
+WL_EXPORT
+EGLBoolean wlEglPostPresentExport(WlEglSurface *surface);
 
 #ifdef __cplusplus
 }

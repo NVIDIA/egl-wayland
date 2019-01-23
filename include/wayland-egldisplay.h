@@ -33,6 +33,10 @@
 extern "C" {
 #endif
 
+/* This define represents the version of the wl_eglstream_controller interface
+   when the attach_eglstream_consumer_attrib() request was first available" */
+#define WL_EGLSTREAM_CONTROLLER_ATTACH_EGLSTREAM_CONSUMER_ATTRIB_SINCE 2
+
 typedef struct WlEglDeviceDpyRec {
     EGLDeviceEXT eglDevice;
     EGLDisplay   eglDisplay;
@@ -52,6 +56,7 @@ typedef struct WlEglDisplayRec {
     struct wl_registry             *wlRegistry;
     struct wl_eglstream_display    *wlStreamDpy;
     struct wl_eglstream_controller *wlStreamCtl;
+    unsigned int                    wlStreamCtlVer;
     struct {
         unsigned int stream_fd     : 1;
         unsigned int stream_inet   : 1;

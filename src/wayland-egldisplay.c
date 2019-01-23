@@ -139,6 +139,7 @@ registry_handle_global(void *data,
                                                 name,
                                                 &wl_eglstream_controller_interface,
                                                 version);
+        display->wlStreamCtlVer = version;
     }
 }
 
