@@ -26,6 +26,7 @@
 #endif
 
 #include "wayland-thread.h"
+#include "wayland-egldisplay.h"
 #include <pthread.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -99,11 +100,21 @@ int wlExternalApiUnlock(void)
 
 static void destroy_tls_key(void *data)
 {
-    WlThread *wlThread = data;
+    WlThread     *wlThread = data;
+    WlEventQueue *iter     = NULL;
+    WlEventQueue *tmp      = NULL;
+
     if (wlThread) {
-        if (wlThread->queue) {
-            wl_event_queue_destroy(wlThread->queue);
+        /* Invalidate and destroy all queues */
+        wl_list_for_each_safe(iter, tmp, &wlThread->evtQueueList, threadLink) {
+            if (iter->queue != NULL) {
+                wl_event_queue_destroy(iter->queue);
+                wl_list_remove(&iter->dpyLink);
+            }
+            wl_list_remove(&iter->threadLink);
+            free(iter);
         }
+
         free(wlThread);
     }
 }
@@ -142,6 +153,8 @@ WlThread* wlGetThread(void)
             free(wlThread);
             return NULL;
         }
+
+        wl_list_init(&wlThread->evtQueueList);
     }
 
     return wlThread;

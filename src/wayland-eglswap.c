@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2018, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -60,7 +60,7 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
     isOffscreen = surface->ctx.isOffscreen;
 
     if (!isOffscreen) {
-        queue = wlGetEventQueue(display->nativeDpy);
+        queue = wlGetEventQueue(display);
         if (queue == NULL) {
             err = EGL_CONTEXT_LOST; /* XXX: Is this the right error? */
             goto fail;
@@ -71,7 +71,11 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
             goto fail;
         }
 
-        wlEglWaitFrameSync(surface, queue);
+        /* Bail out if we were left with an invalid surface */
+        if (wlEglWaitFrameSync(surface, queue) == EGL_BAD_SURFACE) {
+            err = EGL_BAD_SURFACE;
+            goto fail;
+        }
     }
 
     /* Save the internal EGLDisplay, EGLSurface and EGLStream handles, as
@@ -82,11 +86,6 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
 
     /* eglSwapBuffers() is a blocking call. We must release the lock so other
      * threads using the external platform are allowed to progress.
-     *
-     * XXX: Note that we are using surface->ctx.eglSurface. If another
-     *      thread destroys surface while we are still swapping buffers,
-     *      it will become invalid. We need finer-grained locks to solve this
-     *      issue.
      */
     wlExternalApiUnlock();
     if (rects) {
@@ -101,6 +100,13 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         data->egl.streamFlush(eglDisplay, eglStream);
     }
     wlExternalApiLock();
+
+    /* Bail out if the surface was destroyed while the lock was suspended */
+    if (!wlEglIsWlEglSurface(surface)) {
+        err = EGL_BAD_SURFACE;
+        goto fail;
+    }
+
     if (res) {
         if (surface->ctx.useDamageThread) {
             surface->ctx.framesProduced++;
@@ -125,6 +131,7 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
     WlEglDisplay      *display = (WlEglDisplay *)eglDisplay;
     WlEglPlatformData *data    = display->data;
     WlEglSurface      *surface = NULL;
+    EGLint             state;
 
     /* Save the internal EGLDisplay handle, as it's needed by the actual
      * eglSwapInterval() call */
@@ -138,17 +145,29 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
 
     wlExternalApiLock();
 
-    if (wlEglIsWlEglSurface(surface)) {
-        if (surface->ctx.wlStreamResource) {
-            wl_eglstream_display_swap_interval(display->wlStreamDpy,
-                                               surface->ctx.wlStreamResource,
-                                               interval);
-
-            /* Cache interval value so we can reset it upon surface reattach */
-            surface->swapInterval = interval;
-        }
+    /* Check this is a valid wayland EGL surface (and stream) before sending the
+     * swap interval value to the consumer */
+    if (!wlEglIsWlEglSurface(surface) ||
+        (surface->swapInterval == interval) ||
+        (surface->ctx.wlStreamResource == NULL) ||
+        (surface->ctx.eglStream == EGL_NO_STREAM_KHR) ||
+        (data->egl.queryStream(display->devDpy->eglDisplay,
+                               surface->ctx.eglStream,
+                               EGL_STREAM_STATE_KHR,
+                               &state) == EGL_FALSE) ||
+        (state == EGL_STREAM_STATE_DISCONNECTED_KHR))
+    {
+        goto done;
     }
 
+    wl_eglstream_display_swap_interval(display->wlStreamDpy,
+                                       surface->ctx.wlStreamResource,
+                                       interval);
+
+    /* Cache interval value so we can reset it upon surface reattach */
+    surface->swapInterval = interval;
+
+done:
     wlExternalApiUnlock();
 
     return EGL_TRUE;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2018, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -122,22 +122,26 @@ EGLint wlEglWaitFrameSync(WlEglSurface *surface, struct wl_event_queue *queue)
 {
 
     WlEglDisplay *display = surface->wlEglDpy;
+    int ret = 0;
 
-    wlExternalApiUnlock();
-    while (surface->throttleCallback != NULL) {
-        if (wl_display_dispatch_queue(display->nativeDpy,
-                                      queue) == -1) {
-            break;
+    while (ret != -1 && surface->throttleCallback != NULL) {
+        wlExternalApiUnlock();
+        ret = wl_display_dispatch_queue(display->nativeDpy, queue);
+        wlExternalApiLock();
+
+        /* Bail out if the surface was destroyed while the lock was suspended */
+        if (!wlEglIsWlEglSurface(surface)) {
+            return EGL_BAD_SURFACE;
         }
     }
-    wlExternalApiLock();
 
     if (surface->throttleCallback != NULL) {
         wl_callback_destroy(surface->throttleCallback);
         surface->throttleCallback = NULL;
-        return -1;
+        return EGL_BAD_ALLOC;
     }
-    return 1;
+
+    return EGL_SUCCESS;
 }
 
 EGLBoolean
@@ -163,7 +167,7 @@ damage_thread(void *args)
     WlEglSurface          *surface = (WlEglSurface*)args;
     WlEglDisplay          *display = surface->wlEglDpy;
     WlEglPlatformData     *data    = display->data;
-    struct wl_event_queue *queue   = wlGetEventQueue(display->nativeDpy);
+    struct wl_event_queue *queue   = wlGetEventQueue(display);
     int                    ok      = (queue != NULL);
     EGLint                 state;
 
@@ -752,7 +756,7 @@ create_surface_context(WlEglSurface *surface)
 
     assert(surface->ctx.eglSurface == EGL_NO_SURFACE);
 
-    queue = wlGetEventQueue(display->nativeDpy);
+    queue = wlGetEventQueue(display);
     if (!queue) {
         err = EGL_BAD_ALLOC;
         goto fail;
@@ -1031,7 +1035,7 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
 
         if (wlEglIsWaylandDisplay(display->nativeDpy) &&
             wlEglIsWaylandWindowValid(surface->wlEglWin)) {
-            queue = wlGetEventQueue(display->nativeDpy);
+            queue = wlGetEventQueue(display);
             if (queue != NULL) {
                 wl_surface_attach(surface->wlSurface, NULL, 0, 0);
                 wl_surface_commit(surface->wlSurface);

@@ -68,7 +68,7 @@ void wlExternalApiDestroyLock(void);
  * implementation to manage resources relevant to multi-threaded environments.
  */
 typedef struct WlThreadRec {
-    struct wl_event_queue *queue;
+    struct wl_list evtQueueList;
 } WlThread;
 
 
