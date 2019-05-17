@@ -90,6 +90,7 @@ struct wl_eglstream_display {
         int stream_socket           : 1;
         int stream_socket_inet      : 1;
         int stream_socket_unix      : 1;
+        int stream_origin           : 1;
     } exts;
 
     int caps_override               : 1;

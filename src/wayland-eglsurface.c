@@ -1420,6 +1420,7 @@ EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
     struct wl_eglstream_display *wlStreamDpy = NULL;
     struct wl_eglstream         *wlStream    = NULL;
     EGLBoolean                   res         = EGL_FALSE;
+    EGLint                       originY;
 
     wlExternalApiLock();
 
@@ -1445,11 +1446,21 @@ EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
         res = EGL_TRUE;
         goto done;
     case EGL_WAYLAND_Y_INVERTED_WL:
-        /* GLTexture consumers are the only mechanism currently used to map
-         * buffers composited by the wayland compositor. They define the buffer
-         * origin as the lower left corner, which matches to what the wayland
-         * compositor would consider as non-y-inverted */
-        *value = (int)EGL_FALSE;
+        if (wlStreamDpy->exts.stream_origin &&
+            wlStreamDpy->data->egl.queryStream(wlStreamDpy->eglDisplay,
+                                               wlStream->eglStream,
+                                               EGL_STREAM_FRAME_ORIGIN_Y_NV,
+                                               &originY)) {
+            /* If we have an image with origin at the top, the wayland
+             * compositor will consider it as y-inverted */
+            *value = (int)((originY == EGL_TOP_NV) ? EGL_TRUE : EGL_FALSE);
+        } else {
+            /* No mechanism found to query frame orientation. Assume OpenGL
+             * orientation (image origin at the lower left corner), which
+             * matches to what the wayland compositor would consider as
+             * non-y-inverted */
+            *value = (int)EGL_FALSE;
+        }
         res = EGL_TRUE;
         goto done;
     }

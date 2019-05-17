@@ -307,6 +307,7 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
     CACHE_EXT(NV,  stream_socket);
     CACHE_EXT(NV,  stream_socket_inet);
     CACHE_EXT(NV,  stream_socket_unix);
+    CACHE_EXT(NV,  stream_origin);
 
 #undef CACHE_EXT
 

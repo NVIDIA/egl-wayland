@@ -59,4 +59,19 @@ EGLAPI EGLBoolean EGLAPIENTRY eglQueryDisplayAttribKHR (EGLDisplay dpy, EGLint n
 #endif
 #endif /* EGL_KHR_display_reference */
 
+#ifndef EGL_NV_stream_origin
+#define EGL_NV_stream_origin 1
+#define EGL_STREAM_FRAME_ORIGIN_X_NV         0x3366
+#define EGL_STREAM_FRAME_ORIGIN_Y_NV         0x3367
+#define EGL_STREAM_FRAME_MAJOR_AXIS_NV       0x3368
+#define EGL_CONSUMER_AUTO_ORIENTATION_NV     0x3369
+#define EGL_PRODUCER_AUTO_ORIENTATION_NV     0x336A
+#define EGL_LEFT_NV                          0x336B
+#define EGL_RIGHT_NV                         0x336C
+#define EGL_TOP_NV                           0x336D
+#define EGL_BOTTOM_NV                        0x336E
+#define EGL_X_AXIS_NV                        0x336F
+#define EGL_Y_AXIS_NV                        0x3370
+#endif /* EGL_NV_stream_origin */
+
 #endif
