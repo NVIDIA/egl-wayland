@@ -31,6 +31,14 @@
 #include <stdlib.h>
 #include <assert.h>
 
+#if defined(__QNX__)
+#define WL_EGL_ATTRIBUTE_DESTRUCTOR
+#define WL_EGL_ATEXIT(func) atexit(func)
+#else
+#define WL_EGL_ATTRIBUTE_DESTRUCTOR __attribute__((destructor))
+#define WL_EGL_ATEXIT(func) 0
+#endif
+
 static pthread_mutex_t wlMutex;
 static pthread_once_t  wlMutexOnceControl = PTHREAD_ONCE_INIT;
 static int             wlMutexInitialized = 0;
@@ -132,7 +140,15 @@ static void destroy_tls_key(void *data)
             /* Invalidate and destroy the queue */
             else {
                 if (iter->queue != NULL) {
-                    wl_event_queue_destroy(iter->queue);
+                    /* wl_event_queue are associated with wl_display, If the app does
+                     * not terminate EGLDisplay before closing wl_display, calling
+                     * wl_display functions can cause assert or hang issues.
+                     * To prevent that, here we assume wl_display is disconnected
+                     * if exiting the process or unloading the library and skip
+                     * freeing wl_event_queue. */
+                    if (!wlThread->processExiting) {
+                        wl_event_queue_destroy(iter->queue);
+                    }
                     wl_list_remove(&iter->dpyLink);
                 }
                 wl_list_remove(&iter->threadLink);
@@ -146,11 +162,30 @@ static void destroy_tls_key(void *data)
     wlExternalApiUnlock();
 }
 
+static void mainThread_exit(void) WL_EGL_ATTRIBUTE_DESTRUCTOR;
+static void mainThread_exit(void)
+{
+    if (wlTLSKeyInitialized) {
+        WlThread *mainThread = pthread_getspecific(wlTLSKey);
+        if (mainThread) {
+            mainThread->processExiting = 1;
+            destroy_tls_key(mainThread);
+        }
+    }
+}
+
 static void create_tls_key(void)
 {
     /* Create a pthread storage key to be used to set and retrieave TLS data */
     if (pthread_key_create(&wlTLSKey, destroy_tls_key) == 0) {
         wlTLSKeyInitialized = 1;
+    }
+    /* Thread destructor will be called only when thread exits. If main thread
+     * exits, the destructor won't be called and valgrind will report memory leaks.
+     * To avoid that, use atexit/library destructor to do the clean-up.
+     */
+    if (WL_EGL_ATEXIT(mainThread_exit) != 0) {
+        assert(!"failed to create process destructor");
     }
 }
 
@@ -182,6 +217,7 @@ WlThread* wlGetThread(void)
         }
 
         wl_list_init(&wlThread->evtQueueList);
+        wlThread->processExiting = 0;
     }
 
     return wlThread;

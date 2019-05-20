@@ -69,6 +69,7 @@ void wlExternalApiDestroyLock(void);
  */
 typedef struct WlThreadRec {
     struct wl_list evtQueueList;
+    int processExiting;
 } WlThread;
 
 
