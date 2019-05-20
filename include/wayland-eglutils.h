@@ -53,12 +53,12 @@ extern "C" {
 EGLBoolean wlEglFindExtension(const char *extension, const char *extensions);
 #if HAS_MINCORE
 EGLBoolean wlEglPointerIsDereferencable(void *p);
+EGLBoolean wlEglCheckInterfaceType(struct wl_object *obj, const char *ifname);
 #endif
 void wlEglSetErrorCallback(WlEglPlatformData *data,
                            EGLint err,
                            const char *file,
                            int line);
-
 #ifdef __cplusplus
 }
 #endif

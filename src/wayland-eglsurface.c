@@ -71,6 +71,8 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
             return EGL_FALSE;
         }
     }
+    return wlEglCheckInterfaceType((struct wl_object *)surface,
+                                   "wl_surface_interface");
 #else
     /*
      * Note that dereferencing an invalid surface pointer could mean an old
@@ -78,10 +80,11 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
      * member in wl_egl_window struct.
      */
     surface = window->surface;
-#endif
+
     /* wl_surface is a wl_proxy, which is a wl_object. wl_objects's first
      * element points to the interface type */
     return (((*(void **)surface)) == &wl_surface_interface);
+#endif
 }
 
 static void

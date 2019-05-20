@@ -124,6 +124,20 @@ EGLBoolean wlEglPointerIsDereferencable(void *p)
      */
     return (pMinCore((void *) addr, page_size, &unused) >= 0);
 }
+
+EGLBoolean wlEglCheckInterfaceType(struct wl_object *obj, const char *ifname)
+{
+
+    Dl_info info;
+    /*
+     * The first member of a wl_object is a pointer to its wl_interface,
+     * so we can check if it corresponds to the given symbol name
+     */
+    if (dladdr(*(void **)obj, &info) == 0) {
+        return EGL_FALSE;
+    }
+    return !strcmp(info.dli_sname, ifname);
+}
 #endif
 
 void wlEglSetErrorCallback(WlEglPlatformData *data,

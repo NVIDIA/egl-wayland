@@ -39,21 +39,12 @@ static struct wl_list wlEglDeviceDpyList = WL_LIST_INIT(&wlEglDeviceDpyList);
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 {
 #if HAS_MINCORE
-    void *first_pointer = NULL;
-    EGLBoolean ret;
-
     if (!wlEglPointerIsDereferencable(nativeDpy)) {
         return EGL_FALSE;
     }
 
-    first_pointer = *(void **) nativeDpy;
-
-    /* wl_display is a wl_proxy, which is a wl_object.
-     * wl_object's first element points to the interfacetype.
-     */
-    ret = (first_pointer == &wl_display_interface) ? EGL_TRUE : EGL_FALSE;
-
-    return ret;
+    return wlEglCheckInterfaceType((struct wl_object *)nativeDpy,
+                                   "wl_display_interface");
 #else
     /* we return EGL_TRUE in order to always assume a valid wayland
      * display is given so that we bypass all the checks that would
