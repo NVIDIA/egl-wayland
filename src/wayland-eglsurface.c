@@ -574,7 +574,7 @@ static EGLint startInetHandshake(pthread_t *thread,
                                  int *clientSocket,
                                  int *port)
 {
-    struct sockaddr_in addr = { 0 };
+    struct sockaddr_in addr;
     unsigned int       addrLen;
     EGLint err = EGL_SUCCESS;
     int    ret;
@@ -587,6 +587,8 @@ static EGLint startInetHandshake(pthread_t *thread,
         err = EGL_BAD_ALLOC;
         goto fail;
     }
+
+    memset(&addr, 0, sizeof(addr));
 
     addr.sin_family      = AF_INET;
     addr.sin_addr.s_addr = INADDR_ANY; /* Accept connections to all IPs */

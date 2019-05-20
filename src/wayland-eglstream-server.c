@@ -74,7 +74,7 @@ handle_create_stream(struct wl_client *client,
     struct wl_eglstream_display *wlStreamDpy =
         wl_resource_get_user_data(resource);
     struct wl_eglstream *wlStream;
-    struct sockaddr_in sockAddr = { 0 };
+    struct sockaddr_in sockAddr;
     char sockAddrStr[NI_MAXHOST];
     intptr_t *attr;
     int mask = 0;
@@ -91,6 +91,8 @@ handle_create_stream(struct wl_client *client,
     wlStream->width = width;
     wlStream->height = height;
     wlStream->handle = -1;
+
+    memset(&sockAddr, 0, sizeof(sockAddr));
 
     switch (handle_type) {
         case WL_EGLSTREAM_HANDLE_TYPE_FD:

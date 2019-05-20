@@ -40,7 +40,7 @@
 #define WL_LIST_INIT(head) { .prev = (head), .next = (head) }
 #endif
 
-#if defined(__QNX__) || defined(__INTEGRITY)
+#if defined(__QNX__)
 #define HAS_MINCORE 0
 #else
 #define HAS_MINCORE 1
