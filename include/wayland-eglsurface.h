@@ -35,11 +35,12 @@ extern "C" {
 #endif
 
 typedef struct WlEglSurfaceCtxRec {
-    EGLBoolean    isOffscreen;
-    EGLSurface    eglSurface;
-    EGLStreamKHR  eglStream;
-    void         *wlStreamResource;
-    EGLBoolean    isAttached;
+    EGLBoolean              isOffscreen;
+    EGLSurface              eglSurface;
+    EGLStreamKHR            eglStream;
+    void                   *wlStreamResource;
+    struct wl_event_queue  *wlStreamResCbQueue;
+    EGLBoolean              isAttached;
 
     int          useDamageThread;
     pthread_t    damageThreadId;
@@ -71,6 +72,7 @@ typedef struct WlEglSurfaceRec {
     EGLint fifoLength;
 
     struct wl_callback    *throttleCallback;
+    struct wl_event_queue *throttleCbQueue;
 
     struct wl_list link;
 

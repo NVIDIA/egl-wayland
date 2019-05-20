@@ -267,6 +267,54 @@ struct wl_event_queue* wlGetEventQueue(WlEglDisplay *display)
     return (evtQueue ? evtQueue->queue : NULL);
 }
 
+void wlUpdateQueueBusyStatus(WlEglDisplay *display, struct wl_event_queue *queue, EGLBoolean isBusy)
+{
+    WlEventQueue *evtQueue = NULL;
+    WlEventQueue *iter     = NULL;
+    WlEventQueue *tmp      = NULL;
+
+    if (display != NULL) {
+        assert(queue);
+
+        /* Try to find the queue from dpy queue list */
+        wl_list_for_each(iter, &display->evtQueueList, dpyLink) {
+            if (iter->queue == queue) {
+                evtQueue = iter;
+                break;
+            }
+        }
+
+        if (evtQueue) {
+            if (isBusy) {
+                evtQueue->refCount++;
+            }
+            else {
+                /* refCount should not be already 0 */
+                assert(evtQueue->refCount > 0);
+                evtQueue->refCount--;
+            }
+        }
+        /* If it isn't present in evtQueueList, check the
+         * availability in dangling queue list if the isBusy flag is FALSE.
+         * If it is present in dangling queue list and the refCnt reaches 0,
+         * invalidate and destroy */
+        else if (!isBusy) {
+            wl_list_for_each_safe(iter, tmp, &display->dangEvtQueueList, dangLink) {
+                if (iter->queue == queue) {
+                    iter->refCount--;
+                    if (!iter->refCount) {
+                        wl_event_queue_destroy(iter->queue);
+                        iter->queue = NULL;
+                        wl_list_remove(&iter->dangLink);
+                        free(iter);
+                    }
+                    break;
+                }
+            }
+        }
+    }
+}
+
 int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
 {
     struct wl_display *wrapper;
@@ -361,6 +409,14 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
             wl_event_queue_destroy(iter->queue);
             iter->queue = NULL;
             wl_list_remove(&iter->dpyLink);
+        }
+
+        /* Invalidate and destroy event queues from dangling queue list if any */
+        wl_list_for_each_safe(iter, tmp, &display->dangEvtQueueList, dangLink) {
+            wl_event_queue_destroy(iter->queue);
+            iter->queue = NULL;
+            wl_list_remove(&iter->dangLink);
+            free(iter);
         }
     }
     if (display->ownNativeDpy) {
@@ -510,6 +566,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display->ownNativeDpy = ownNativeDpy;
     display->nativeDpy    = nativeDpy;
     wl_list_init(&display->evtQueueList);
+    wl_list_init(&display->dangEvtQueueList);
 
     queue = wlGetEventQueue(display);
     if (queue == NULL) {

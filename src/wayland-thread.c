@@ -104,19 +104,46 @@ static void destroy_tls_key(void *data)
     WlEventQueue *iter     = NULL;
     WlEventQueue *tmp      = NULL;
 
+    wlExternalApiLock();
+
     if (wlThread) {
-        /* Invalidate and destroy all queues */
         wl_list_for_each_safe(iter, tmp, &wlThread->evtQueueList, threadLink) {
-            if (iter->queue != NULL) {
-                wl_event_queue_destroy(iter->queue);
-                wl_list_remove(&iter->dpyLink);
+            /* skip destroy if queue is still in use */
+            if (iter->refCount > 0) {
+                wl_list_remove(&iter->threadLink);
+                wl_list_init(&iter->threadLink);
+
+                /* if terminateDisplay is called before thread exit,
+                 * queue could have been already destroyed */
+                if (iter->queue == NULL) {
+                    free(iter);
+                }
+                /* add it to the dangling queue list
+                 * of the display to destroy it later*/
+                else {
+                    WlEglDisplay *display = iter->display;
+                    if(display) {
+                        wl_list_remove(&iter->dpyLink);
+                        wl_list_init(&iter->dpyLink);
+                        wl_list_insert(&display->dangEvtQueueList, &iter->dangLink);
+                    }
+                }
             }
-            wl_list_remove(&iter->threadLink);
-            free(iter);
+            /* Invalidate and destroy the queue */
+            else {
+                if (iter->queue != NULL) {
+                    wl_event_queue_destroy(iter->queue);
+                    wl_list_remove(&iter->dpyLink);
+                }
+                wl_list_remove(&iter->threadLink);
+                free(iter);
+            }
         }
 
         free(wlThread);
     }
+
+    wlExternalApiUnlock();
 }
 
 static void create_tls_key(void)

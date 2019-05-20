@@ -52,6 +52,7 @@ typedef struct WlEglDisplayRec {
     EGLBoolean         ownNativeDpy;
     struct wl_display *nativeDpy;
     struct wl_list     evtQueueList;
+    struct wl_list     dangEvtQueueList;
 
     struct wl_registry             *wlRegistry;
     struct wl_eglstream_display    *wlStreamDpy;
@@ -84,8 +85,10 @@ typedef struct WlEglDisplayRec {
 typedef struct WlEventQueueRec {
     WlEglDisplay          *display;
     struct wl_event_queue *queue;
+    int                    refCount;
 
     struct wl_list dpyLink;
+    struct wl_list dangLink;
     struct wl_list threadLink;
 } WlEventQueue;
 
@@ -119,6 +122,9 @@ const char* wlEglQueryStringExport(void *data,
                                    EGLExtPlatformString name);
 
 struct wl_event_queue* wlGetEventQueue(WlEglDisplay *display);
+void wlUpdateQueueBusyStatus(WlEglDisplay *display,
+                             struct wl_event_queue *queue,
+                             EGLBoolean isBusy);
 int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue);
 
 #ifdef __cplusplus

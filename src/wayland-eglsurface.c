@@ -90,10 +90,25 @@ wayland_throttleCallback(void *data,
                          uint32_t time)
 {
     WlEglSurface *surface = (WlEglSurface *)data;
+    WlEglDisplay *display = NULL;
+
     (void) time;
 
-    surface->throttleCallback = NULL;
-    wl_callback_destroy(callback);
+    wlExternalApiLock();
+
+    /* the surface could be destroyed while the lock was suspended in
+     * wlEglWaitFrameSync */
+    if (wlEglIsWlEglSurface(surface) &&
+        (surface->throttleCallback != NULL)) {
+        display = surface->wlEglDpy;
+        wlUpdateQueueBusyStatus(display, surface->throttleCbQueue, EGL_FALSE);
+        surface->throttleCbQueue = NULL;
+
+        wl_callback_destroy(callback);
+        surface->throttleCallback = NULL;
+    }
+
+    wlExternalApiUnlock();
 }
 
 static const struct wl_callback_listener throttle_listener = {
@@ -105,6 +120,11 @@ void wlEglCreateFrameSync(WlEglSurface *surface, struct wl_event_queue *queue)
     struct wl_surface *wrapper = NULL;
 
     if (surface->swapInterval > 0) {
+        /* it is assumed that the refCount is decremented for
+         * throttleCbQueue and it is set as NULL in the previous
+         * throttleCallback, if not then raise the assertion */
+        assert(surface->throttleCbQueue == NULL);
+
         wrapper = wl_proxy_create_wrapper(surface->wlSurface);
         wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
         surface->throttleCallback = wl_surface_frame(wrapper);
@@ -113,8 +133,25 @@ void wlEglCreateFrameSync(WlEglSurface *surface, struct wl_event_queue *queue)
                                      &throttle_listener, surface) == -1) {
             return;
         }
-        wl_surface_commit(surface->wlSurface);
 
+        /* After a window resize, the compositor has to be
+         * updated with the new buffer's geometry. However, we
+         * won't have updated geometry information until the
+         * underlying buffer is attached. A surface attach
+         * may be deferred to a later time in some situations
+         * (e.g. FIFO_SYNCHRONOUS + damage thread).
+         *
+         * Therefore, the surface_commit done from here would
+         * use outdated geometry information if the buffer is
+         * not attached, which would make xdg-shell fail with
+         * error. To avoid this, skip the surface commit here
+         * if the surface attach is not yet done. */
+        if (surface->ctx.isAttached) {
+            wl_surface_commit(surface->wlSurface);
+        }
+
+        surface->throttleCbQueue = queue;
+        wlUpdateQueueBusyStatus(surface->wlEglDpy, queue, EGL_TRUE);
     }
 }
 
@@ -321,7 +358,14 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
         return;
     }
 
-    if (surface->throttleCallback != NULL) {
+    /* If we are destroying the current context,
+     * we are likely tearing down, and the latest
+     * framesync must be destroyed too */
+    if ((&surface->ctx == ctx) &&
+        (surface->throttleCallback != NULL)) {
+        wlUpdateQueueBusyStatus(display, surface->throttleCbQueue, EGL_FALSE);
+        surface->throttleCbQueue = NULL;
+
         wl_callback_destroy(surface->throttleCallback);
         surface->throttleCallback = NULL;
     }
@@ -334,6 +378,11 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
     }
 
     if (resource) {
+        if (ctx->wlStreamResCbQueue != NULL) {
+            wlUpdateQueueBusyStatus(display, ctx->wlStreamResCbQueue, EGL_FALSE);
+            ctx->wlStreamResCbQueue = NULL;
+        }
+
         wl_buffer_destroy(resource);
     }
 }
@@ -362,15 +411,24 @@ wl_buffer_release(void *data, struct wl_buffer *buffer)
 {
     WlEglSurface *surface = (WlEglSurface*)data;
     WlEglSurfaceCtx *ctx;
+    struct wl_event_queue *queue;
 
     /* Look for the surface context for the given buffer and destroy it */
     wlExternalApiLock();
-    wl_list_for_each(ctx, &surface->oldCtxList, link) {
-        if (ctx->wlStreamResource == buffer) {
-            destroy_surface_context(surface, ctx);
-            wl_list_remove(&ctx->link);
-            free(ctx);
-            break;
+    if (wlEglIsWlEglSurface(surface)) {
+        if (surface->ctx.wlStreamResCbQueue != NULL) {
+            queue = surface->ctx.wlStreamResCbQueue;
+            wlUpdateQueueBusyStatus(surface->wlEglDpy, queue, EGL_FALSE);
+            surface->ctx.wlStreamResCbQueue = NULL;
+        }
+
+        wl_list_for_each(ctx, &surface->oldCtxList, link) {
+            if (ctx->wlStreamResource == buffer) {
+                destroy_surface_context(surface, ctx);
+                wl_list_remove(&ctx->link);
+                free(ctx);
+                break;
+            }
         }
     }
     wlExternalApiUnlock();
@@ -423,6 +481,9 @@ create_wl_eglstream(WlEglSurface *surface,
         wl_buffer_destroy(buffer);
         return NULL;
     }
+
+    surface->ctx.wlStreamResCbQueue = queue;
+    wlUpdateQueueBusyStatus(display, queue, EGL_TRUE);
 
     return buffer;
 }
@@ -766,6 +827,11 @@ create_surface_context(WlEglSurface *surface)
 
     assert(surface->ctx.eglSurface == EGL_NO_SURFACE);
 
+    /* it is assumed that the wlStreamResCbQueue is NULL and
+     * will be set once per surf.ctx and per wlStreamResource
+     * if it is already set raise an assertion */
+    assert(surface->ctx.wlStreamResCbQueue == NULL);
+
     queue = wlGetEventQueue(display);
     if (!queue) {
         err = EGL_BAD_ALLOC;
@@ -899,11 +965,12 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
 
     wlExternalApiLock();
     wl_list_init(&surface->oldCtxList);
-    wl_list_insert(&wlEglSurfaceList, &surface->link);
     if (create_surface_context(surface) != EGL_SUCCESS) {
         wlExternalApiUnlock();
         return EGL_FALSE;
     }
+
+    wl_list_insert(&wlEglSurfaceList, &surface->link);
 
     wl_eglstream_display_swap_interval(display->wlStreamDpy,
                                        surface->ctx.wlStreamResource,
@@ -945,6 +1012,7 @@ resize_callback(struct wl_egl_window *window, void *data)
 
         discard_surface_context(surface);
         surface->ctx.wlStreamResource = NULL;
+        surface->ctx.wlStreamResCbQueue = NULL;
         surface->ctx.isAttached = EGL_FALSE;
         surface->ctx.eglSurface = EGL_NO_SURFACE;
         surface->ctx.eglStream = EGL_NO_STREAM_KHR;
