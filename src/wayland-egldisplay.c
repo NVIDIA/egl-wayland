@@ -881,7 +881,6 @@ const char* wlEglQueryStringExport(void *data,
                                    EGLExtPlatformString name)
 {
     WlEglPlatformData *pData   = (WlEglPlatformData *)data;
-    WlEglDisplay      *display = (WlEglDisplay *)dpy;
     EGLBoolean         isEGL15 = (pData->egl.major > 1) ||
                                  ((pData->egl.major == 1) &&
                                   (pData->egl.minor >= 5));
@@ -900,34 +899,23 @@ const char* wlEglQueryStringExport(void *data,
             res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
                             "EGL_EXT_platform_wayland";
         } else {
-            EGLBoolean isWlEglDpy = EGL_FALSE;
+            /*
+             * Check whether the given display supports EGLStream
+             * extensions. For Wayland support over EGLStreams, at least the
+             * following extensions must be supported by the underlying
+             * driver:
+             *
+             *  - EGL_KHR_stream
+             *  - EGL_KHR_stream_producer_eglsurface
+             *  - EGL_KHR_stream_cross_process_fd
+             */
+            const char *exts = pData->egl.queryString(dpy, EGL_EXTENSIONS);
 
-            wlExternalApiLock();
-            isWlEglDpy = wlEglIsWlEglDisplay(display);
-            wlExternalApiUnlock();
-
-            if (isWlEglDpy) {
+            if (wlEglFindExtension("EGL_KHR_stream", exts) &&
+                wlEglFindExtension("EGL_KHR_stream_producer_eglsurface", exts) &&
+                wlEglFindExtension("EGL_KHR_stream_cross_process_fd", exts)) {
                 res = "EGL_WL_bind_wayland_display "
-                      "EGL_WL_wayland_eglstream";
-            } else {
-                /*
-                 * Check whether the given display supports EGLStream
-                 * extensions. For Wayland support over EGLStreams, at least the
-                 * following extensions must be supported by the underlying
-                 * driver:
-                 *
-                 *  - EGL_KHR_stream
-                 *  - EGL_KHR_stream_producer_eglsurface
-                 *  - EGL_KHR_stream_cross_process_fd
-                 */
-                const char *exts = pData->egl.queryString(dpy, EGL_EXTENSIONS);
-
-                if (wlEglFindExtension("EGL_KHR_stream", exts) &&
-                    wlEglFindExtension("EGL_KHR_stream_producer_eglsurface", exts) &&
-                    wlEglFindExtension("EGL_KHR_stream_cross_process_fd", exts)) {
-                    res = "EGL_WL_bind_wayland_display "
-                          "EGL_WL_wayland_eglstream";
-                }
+                     "EGL_WL_wayland_eglstream";
             }
         }
         break;
