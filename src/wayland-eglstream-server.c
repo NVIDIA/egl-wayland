@@ -287,7 +287,7 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
         return EGL_FALSE;
     }
 
-    wlStreamDpy = malloc(sizeof(*wlStreamDpy));
+    wlStreamDpy = calloc(1, sizeof(*wlStreamDpy));
     if (!wlStreamDpy) {
         return EGL_FALSE;
     }
