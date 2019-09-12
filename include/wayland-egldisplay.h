@@ -80,6 +80,8 @@ typedef struct WlEglDisplayRec {
     struct wl_list link;
     EGLBoolean useRefCount;
     unsigned int refCount;
+
+    EGLBoolean initialized;
 } WlEglDisplay;
 
 typedef struct WlEventQueueRec {
@@ -125,7 +127,7 @@ struct wl_event_queue* wlGetEventQueue(WlEglDisplay *display);
 void wlUpdateQueueBusyStatus(WlEglDisplay *display,
                              struct wl_event_queue *queue,
                              EGLBoolean isBusy);
-int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue);
+int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue, EGLBoolean lockSuspend);
 
 #ifdef __cplusplus
 }

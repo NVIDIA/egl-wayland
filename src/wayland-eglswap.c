@@ -47,8 +47,8 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
 
     wlExternalApiLock();
 
-    if (!wlEglIsWaylandDisplay(display->nativeDpy)) {
-        err = EGL_BAD_DISPLAY;
+    if (!display->initialized) {
+        err = EGL_NOT_INITIALIZED;
         goto fail;
     }
 

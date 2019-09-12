@@ -154,6 +154,25 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static void
+registry_handle_global_check_eglstream(
+                       void *data,
+                       struct wl_registry *registry,
+                       uint32_t name,
+                       const char *interface,
+                       uint32_t version)
+{
+    EGLBoolean *hasEglStream = (EGLBoolean *)data;
+    (void) registry;
+    (void) name;
+    (void) interface;
+    (void) version;
+
+    if (strcmp(interface, "wl_eglstream_display") == 0) {
+        *hasEglStream = EGL_TRUE;
+    }
+}
+
+static void
 eglstream_display_handle_caps(void *data,
                               struct wl_eglstream_display *wlStreamDpy,
                               int32_t caps)
@@ -310,7 +329,7 @@ void wlUpdateQueueBusyStatus(WlEglDisplay *display, struct wl_event_queue *queue
     }
 }
 
-int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
+int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue, EGLBoolean lockSuspend)
 {
     struct wl_display *wrapper;
     struct wl_callback *callback;
@@ -327,9 +346,13 @@ int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue)
          * release the lock just in case it re-enters the external platform (e.g
          * calling into EGL or any of the configured wayland callbacks)
          */
-        wlExternalApiUnlock();
+        if (lockSuspend) {
+            wlExternalApiUnlock();
+        }
         ret = wl_display_dispatch_queue(display->nativeDpy, queue);
-        wlExternalApiLock();
+        if (lockSuspend) {
+            wlExternalApiLock();
+        }
     }
 
     if (!done) {
@@ -364,11 +387,7 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
     EGLBoolean         fullTerminate = EGL_FALSE;
     EGLBoolean         res           = EGL_TRUE;
 
-    /* We can only get here if the EGLDisplay belongs to the Wayland platform.
-     * However, if it is no longer a WlEglDisplay, it means we have already
-     * removed it from the list. Terminating an already terminated display
-     * has no effect as per the EGL specification. */
-    if (!wlEglIsWlEglDisplay(display)) {
+    if (!display->initialized) {
         return EGL_TRUE;
     }
 
@@ -379,13 +398,14 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
         }
     }
 
-    /* Remove display from wlEglDisplayList before calling into
+    /* Mark the display as terminated before calling into
      * wlEglDestroyAllSurfaces to avoid multiple threads trying to teminate
      * the same display simultaneously. When wlEglDestroyAllSurfaces was
      * called, wl external API lock could be released temporarily, which
      * would allow multiple threads get the same display, enter
-     * terminateDisplay and lead to segmentation fault. */
-    wl_list_remove(&display->link);
+     * terminateDisplay and lead to segmentation fault.
+     */
+    display->initialized = EGL_FALSE;
 
     /* First, destroy any surface associated to the given display. Then
      * destroy the display connection itself */
@@ -414,9 +434,6 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
             free(iter);
         }
     }
-    if (display->ownNativeDpy) {
-        wl_display_disconnect(display->nativeDpy);
-    }
 
     /* Unreference internal EGL display. If refCount reaches 0, mark the
      * internal display for termination. */
@@ -427,14 +444,9 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
              * eglTerminate() call */
             fullTerminate = EGL_TRUE;
             dpy           = display->devDpy->eglDisplay;
-
-            wl_list_remove(&display->devDpy->link);
-            free(display->devDpy);
         }
     }
 
-    /* Destroy the external display */
-    free(display);
 
     /* XXX: Currently, we assume an internal EGLDisplay will only be used by a
      *      single external platform. In practice, we could create multiple
@@ -445,9 +457,7 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean skipDestroy)
      *       https://cvs.khronos.org/bugzilla/show_bug.cgi?id=12072
      */
     if (fullTerminate) {
-        wlExternalApiUnlock();
         res = data->egl.terminate(dpy);
-        wlExternalApiLock();
     }
 
     return res;
@@ -464,6 +474,47 @@ EGLBoolean wlEglTerminateHook(EGLDisplay dpy)
     return res;
 }
 
+static EGLBoolean serverSupportsEglStream(struct wl_display *nativeDpy)
+{
+    struct wl_display     *wrapper      = NULL;
+    struct wl_registry    *wlRegistry   = NULL;
+    struct wl_event_queue *queue        = wl_display_create_queue(nativeDpy);
+    int                    ret          = 0;
+    EGLBoolean             hasEglStream = EGL_FALSE;
+    const struct wl_registry_listener registryListener = {
+        registry_handle_global_check_eglstream,
+        registry_handle_global_remove
+    };
+
+    if (queue == NULL) {
+        return EGL_FALSE;
+    }
+
+    wrapper = wl_proxy_create_wrapper(nativeDpy);
+    wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
+
+    /* Listen to wl_registry events and make a roundtrip in order to find the
+     * wl_eglstream_display global object.
+     */
+    wlRegistry = wl_display_get_registry(wrapper);
+    wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
+    ret = wl_registry_add_listener(wlRegistry,
+                                   &registryListener,
+                                   &hasEglStream);
+    if (ret == 0) {
+        wl_display_roundtrip_queue(nativeDpy, queue);
+    }
+
+    if (queue) {
+        wl_event_queue_destroy(queue);
+    }
+    if (wlRegistry) {
+       wl_registry_destroy(wlRegistry);
+    }
+
+    return hasEglStream;
+}
+
 EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                                          EGLenum platform,
                                          void *nativeDpy,
@@ -471,20 +522,14 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 {
     WlEglPlatformData     *pData        = (WlEglPlatformData *)data;
     WlEglDeviceDpy        *devDpy       = NULL;
-    WlEglDeviceDpy        *tmpDpy       = NULL;
     WlEglDisplay          *display      = NULL;
-    WlEglDisplay          *dpy          = NULL;
-    EGLBoolean             ownNativeDpy = EGL_FALSE;
     EGLint                 numDevices   = 0;
-    int                    ret          = 0;
     int                    nAttribs     = 0;
     EGLint                *attribs2     = NULL;
     int                    i            = 0;
     EGLDisplay             eglDisplay   = NULL;
     EGLDeviceEXT           eglDevice    = NULL;
     EGLint                 err          = EGL_SUCCESS;
-    struct wl_display     *wrapper      = NULL;
-    struct wl_event_queue *queue        = NULL;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -527,25 +572,12 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 
     wlExternalApiLock();
 
-    /* If default display is requested, create a new Wayland display connection
-     * and its corresponding internal EGLDisplay. Otherwise, check for existing
-     * associated EGLDisplay for the given Wayland display and if it doesn't
-     * exist, create a new one */
-    if (!nativeDpy) {
-        nativeDpy = wl_display_connect(NULL);
-        if (!nativeDpy) {
+    wl_list_for_each(display, &wlEglDisplayList, link) {
+        if ((display->nativeDpy == nativeDpy ||
+            (!nativeDpy && display->ownNativeDpy))
+            && display->devDpy->eglDisplay == eglDisplay) {
             wlExternalApiUnlock();
-            return EGL_NO_DISPLAY;
-        }
-
-        ownNativeDpy = EGL_TRUE;
-        wl_display_dispatch_pending(nativeDpy);
-    } else {
-        wl_list_for_each(display, &wlEglDisplayList, link) {
-            if (display->nativeDpy == nativeDpy && display->devDpy->eglDisplay == eglDisplay) {
-                wlExternalApiUnlock();
-                return (EGLDisplay)display;
-            }
+            return (EGLDisplay)display;
         }
     }
 
@@ -556,50 +588,33 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         goto fail;
     }
 
-    display->data = pData;
-
-    display->ownNativeDpy = ownNativeDpy;
-    display->nativeDpy    = nativeDpy;
     wl_list_init(&display->evtQueueList);
     wl_list_init(&display->dangEvtQueueList);
 
-    queue = wlGetEventQueue(display);
-    if (queue == NULL) {
-        wlExternalApiUnlock();
-        err = EGL_BAD_ALLOC;
-        goto fail;
+    display->data = pData;
+
+    display->initialized = EGL_FALSE;
+    display->nativeDpy   = nativeDpy;
+
+    /* If default display is requested, create a new Wayland display connection
+     * and its corresponding internal EGLDisplay. Otherwise, check for existing
+     * associated EGLDisplay for the given Wayland display and if it doesn't
+     * exist, create a new one
+     */
+    if (!display->nativeDpy) {
+        display->nativeDpy = wl_display_connect(NULL);
+        if (!display->nativeDpy) {
+            wlExternalApiUnlock();
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
+
+        display->ownNativeDpy = EGL_TRUE;
+        wl_display_dispatch_pending(display->nativeDpy);
     }
 
-    wrapper = wl_proxy_create_wrapper(nativeDpy);
-    wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
-
-    /* Listen to wl_registry events and make a roundtrip in order to find the
-     * wl_eglstream_display global object */
-    display->wlRegistry = wl_display_get_registry(wrapper);
-    wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
-    ret = wl_registry_add_listener(display->wlRegistry,
-                                   &registry_listener,
-                                   display);
-    if (ret == 0) {
-        ret = wlEglRoundtrip(display, queue);
-    }
-    if (ret < 0 || !display->wlStreamDpy) {
+    if (!serverSupportsEglStream(display->nativeDpy)) {
         wlExternalApiUnlock();
-        err = EGL_BAD_ALLOC;
-        goto fail;
-    }
-
-    /* Listen to wl_eglstream_display events and make another roundtrip so we
-     * catch any bind-related event (e.g. server capabilities) */
-    ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
-                                            &eglstream_display_listener,
-                                            display);
-    if (ret == 0) {
-        ret = wlEglRoundtrip(display, queue);
-    }
-    if (ret < 0) {
-        wlExternalApiUnlock();
-        err = EGL_BAD_ALLOC;
         goto fail;
     }
 
@@ -616,6 +631,9 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         }
     }
 
+    /* If no device found in wlEglDeviceDpyList, insert the newly created
+     * WlEglDeviceDpy into wlEglDeviceDpyList.
+     */
     if (!display->devDpy) {
         devDpy = calloc(1, sizeof(*devDpy));
         if (!devDpy) {
@@ -626,47 +644,9 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 
         devDpy->eglDevice = eglDevice;
         devDpy->eglDisplay = eglDisplay;
-    }
 
-    // Due to temporary unlock of wlMutex in wlEglRoundtrip, it is possible
-    // that two or more threads enter wlEglGetPlatformDisplayExport simultaneously.
-    // Before inserting display in wlEglDisplayList, we need to check whether
-    // while we were unlocked, other thread already inserted the display which
-    // has the same nativeDpy. If so, we need to free allocations and return
-    // the already inserted display.
-    wl_list_for_each(dpy, &wlEglDisplayList, link) {
-        if (dpy->nativeDpy == display->nativeDpy) {
-            // If display->devDpy is NULL, we just allocated devDpy, need to free it.
-            if (!display->devDpy) {
-                free(devDpy);
-            }
-
-            terminateDisplay(display, EGL_FALSE);
-
-            wlExternalApiUnlock();
-            return (EGLDisplay)dpy;
-        }
-    }
-
-    // If no device found in wlEglDeviceDpyList, insert the newly created
-    // WlEglDeviceDpy into wlEglDeviceDpyList.
-    if (!display->devDpy) {
-        assert(devDpy);
-        // Given that different wayland EGLDisplays may share the same devDpy,
-        // it could happen that someone else creating a different display
-        // already created the devDpy. We need to check it does not exist yet
-        // before inserting, and if it does, free devDpy.
-        wl_list_for_each(tmpDpy, &wlEglDeviceDpyList, link) {
-            /* TODO: Add support for multiple devices/device selection */
-            display->devDpy = tmpDpy;
-            free (devDpy);
-            break;
-        }
-
-        if (!display->devDpy) {
-            wl_list_insert(&wlEglDeviceDpyList, &devDpy->link);
-            display->devDpy = devDpy;
-        }
+        wl_list_insert(&wlEglDeviceDpyList, &devDpy->link);
+        display->devDpy = devDpy;
 
         display->devDpy->refCount++;
     }
@@ -679,12 +659,11 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     return display;
 
 fail:
-    if (display) {
-        wlEglTerminateHook(display);
-    } else if (ownNativeDpy) {
-        wl_display_disconnect(nativeDpy);
-    }
 
+    if (display->ownNativeDpy) {
+        wl_display_disconnect(display->nativeDpy);
+    }
+    free(display);
     free(devDpy);
 
     if (err != EGL_SUCCESS) {
@@ -700,14 +679,23 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     WlEglPlatformData *data        = display->data;
     EGLBoolean         res         = EGL_FALSE;
     EGLAttrib          useRefCount = EGL_FALSE;
+    struct wl_display     *wrapper      = NULL;
+    struct wl_event_queue *queue        = NULL;
+    EGLint                 err          = EGL_SUCCESS;
+    int                    ret          = 0;
+
+    wlExternalApiLock();
+
+    if (display->initialized) {
+        wlExternalApiUnlock();
+        return EGL_TRUE;
+    }
 
     dpy = display->devDpy->eglDisplay;
     res = data->egl.initialize(dpy, major, minor);
 
     if (res) {
         const char *exts = data->egl.queryString(dpy, EGL_EXTENSIONS);
-
-        wlExternalApiLock();
 
 #define CACHE_EXT(_PREFIX_, _NAME_)                                      \
         display->exts._NAME_ =                                           \
@@ -725,7 +713,6 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
 #undef CACHE_EXT
 
-        wlExternalApiUnlock();
     }
 
     if (display->exts.display_reference) {
@@ -737,7 +724,56 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         display->refCount += 1;
     }
 
-    return res;
+    queue = wlGetEventQueue(display);
+    if (queue == NULL) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    wrapper = wl_proxy_create_wrapper(display->nativeDpy);
+    wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
+
+    /* Listen to wl_registry events and make a roundtrip in order to find the
+     * wl_eglstream_display global object
+     */
+    display->wlRegistry = wl_display_get_registry(wrapper);
+    wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
+    ret = wl_registry_add_listener(display->wlRegistry,
+                                   &registry_listener,
+                                   display);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, queue, EGL_FALSE);
+    }
+    if (ret < 0 || !display->wlStreamDpy) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    /* Listen to wl_eglstream_display events and make another roundtrip so we
+     * catch any bind-related event (e.g. server capabilities)
+     */
+    ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
+                                            &eglstream_display_listener,
+                                            display);
+    if (ret == 0) {
+        ret = wlEglRoundtrip(display, queue, EGL_FALSE);
+    }
+    if (ret < 0) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    display->initialized = EGL_TRUE;
+    wlExternalApiUnlock();
+    return EGL_TRUE;
+
+fail:
+    terminateDisplay(display, EGL_FALSE);
+    if (err != EGL_SUCCESS) {
+        wlEglSetError(data, err);
+    }
+    wlExternalApiUnlock();
+    return EGL_FALSE;
 }
 
 EGLBoolean wlEglIsWlEglDisplay(WlEglDisplay *display)
@@ -861,6 +897,8 @@ EGLBoolean wlEglGetConfigAttribHook(EGLDisplay dpy,
 EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data)
 {
     WlEglDisplay *display, *next;
+    WlEglDeviceDpy *devDpy, *nextDevDpy;
+
     EGLBoolean res = EGL_TRUE;
 
     wlExternalApiLock();
@@ -868,9 +906,20 @@ EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data)
     wl_list_for_each_safe(display, next, &wlEglDisplayList, link) {
         if (display->data == data) {
             res = terminateDisplay((EGLDisplay)display, EGL_TRUE) && res;
+            if (display->ownNativeDpy) {
+                wl_display_disconnect(display->nativeDpy);
+            }
+            wl_list_remove(&display->link);
+            /* Destroy the external display */
+            free(display);
         }
     }
 
+    wl_list_for_each_safe(devDpy, nextDevDpy, &wlEglDeviceDpyList, link) {
+        wl_list_remove(&devDpy->link);
+        free(devDpy);
+
+    }
     wlExternalApiUnlock();
 
     return res;

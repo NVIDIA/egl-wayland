@@ -197,8 +197,8 @@ wlEglSendDamageEvent(WlEglSurface *surface, struct wl_event_queue *queue)
                       surface->width, surface->height);
     wl_surface_commit(surface->wlSurface);
     surface->ctx.isAttached = EGL_TRUE;
-    return (wlEglRoundtrip(surface->wlEglDpy, queue) >= 0) ? EGL_TRUE :
-                                                             EGL_FALSE;
+    return (wlEglRoundtrip(surface->wlEglDpy, queue, EGL_TRUE) >= 0) ?
+                            EGL_TRUE : EGL_FALSE;
 }
 
 static void*
@@ -352,9 +352,7 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
     ctx->wlStreamResource = NULL;
 
     if (surf != EGL_NO_SURFACE) {
-        wlExternalApiUnlock();
         data->egl.destroySurface(dpy, surf);
-        wlExternalApiLock();
     }
 
     if (surface->ctx.isOffscreen) {
@@ -723,7 +721,7 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
 
     /* Need a roundtrip for the consumer's endpoint to be created before the
      * producer's */
-    if (wlEglRoundtrip(display, queue) < 0) {
+    if (wlEglRoundtrip(display, queue, EGL_TRUE) < 0) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
@@ -912,7 +910,7 @@ create_surface_context(WlEglSurface *surface)
         surface->ctx.isAttached = EGL_TRUE;
     }
 
-    if (wlEglRoundtrip(display, queue) < 0) {
+    if (wlEglRoundtrip(display, queue, EGL_TRUE) < 0) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
@@ -1165,7 +1163,7 @@ static EGLint destroyEglSurface(EGLDisplay dpy, EGLSurface eglSurface)
             if (queue != NULL) {
                 wl_surface_attach(surface->wlSurface, NULL, 0, 0);
                 wl_surface_commit(surface->wlSurface);
-                ret = wlEglRoundtrip(display, queue);
+                ret = wlEglRoundtrip(display, queue, EGL_TRUE);
             }
 
             if (surface->isSurfaceProducer) {
@@ -1198,11 +1196,13 @@ destroy_callback(void *data)
 {
     WlEglSurface *surface = (WlEglSurface*)data;
 
-    if (!surface || !wlEglIsWlEglDisplay(surface->wlEglDpy)) {
+    wlExternalApiLock();
+
+    if (!surface || !surface->wlEglDpy->initialized) {
+        wlExternalApiUnlock();
         return;
     }
 
-    wlExternalApiLock();
     destroyEglSurface((EGLDisplay)surface->wlEglDpy,
                       (EGLSurface)surface);
     wlExternalApiUnlock();
@@ -1249,8 +1249,8 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
 
     wlExternalApiLock();
 
-    if (!wlEglIsWaylandDisplay(display->nativeDpy)) {
-        err = EGL_BAD_DISPLAY;
+    if (!display->initialized) {
+        err = EGL_NOT_INITIALIZED;
         goto fail;
     }
 
@@ -1267,9 +1267,7 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
         goto fail;
     }
 
-    wlExternalApiUnlock();
     res = data->egl.getConfigAttrib(dpy, config, EGL_SURFACE_TYPE, &surfType);
-    wlExternalApiLock();
 
     if (!res || !(surfType & EGL_STREAM_BIT_KHR)) {
         err = EGL_BAD_CONFIG;
@@ -1454,12 +1452,13 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
     WlEglDisplay *display = (WlEglDisplay*)dpy;
     EGLBoolean    err     = EGL_SUCCESS;
 
-    if (!wlEglIsWlEglDisplay(display)) {
-        wlEglSetError(display->data, EGL_BAD_DISPLAY);
+    wlExternalApiLock();
+    if (!display->initialized) {
+        wlEglSetError(display->data, EGL_NOT_INITIALIZED);
+        wlExternalApiUnlock();
         return EGL_FALSE;
     }
 
-    wlExternalApiLock();
     err = destroyEglSurface(dpy, eglSurface);
     wlExternalApiUnlock();
 
