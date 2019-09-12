@@ -179,11 +179,6 @@ damage_thread(void *args)
     WlEglSurface          *surface = (WlEglSurface*)args;
     WlEglDisplay          *display = surface->wlEglDpy;
     WlEglPlatformData     *data    = display->data;
-    /* We do not use wlGetTrackedEventQueue() here. Using
-     * wlGetTrackedEventQueue() adds dependency on
-     * wlExternalApiLock(), which we want to avoid in damage_thread().
-     * Also we will have only one wl_event_queue per damage_thread().
-     */
     struct wl_event_queue *queue   = wl_display_create_queue(
                                         display->nativeDpy);
     int                    ok      = (queue != NULL);
@@ -924,9 +919,10 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
 
     wl_list_insert(&wlEglSurfaceList, &surface->link);
 
-    wl_eglstream_display_swap_interval(display->wlStreamDpy,
-                                       surface->ctx.wlStreamResource,
-                                       surface->swapInterval);
+    /* Set client's pendingSwapIntervalUpdate for updating client's
+     * swapinterval
+     */
+    surface->pendingSwapIntervalUpdate = EGL_TRUE;
 
     wlExternalApiUnlock();
     return EGL_TRUE;
@@ -977,10 +973,10 @@ resize_callback(struct wl_egl_window *window, void *data)
                                    surface,
                                    pData->egl.getCurrentContext());
 
-            /* Reset swap interval */
-            wl_eglstream_display_swap_interval(display->wlStreamDpy,
-                                               surface->ctx.wlStreamResource,
-                                               surface->swapInterval);
+            /* Set client's pendingSwapIntervalUpdate for updating client's
+             * swapinterval
+             */
+            surface->pendingSwapIntervalUpdate = EGL_TRUE;
         }
     }
     pthread_mutex_unlock(&surface->mutexLock);
@@ -1294,11 +1290,10 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
 
     surface->swapInterval = 1; // Default swap interval is 1
 
-    // Set client's swap interval if there is an override on the compositor
-    // side, Otherwise set to default
-    wl_eglstream_display_swap_interval(display->wlStreamDpy,
-                                       surface->ctx.wlStreamResource,
-                                       surface->swapInterval);
+    /* Set client's pendingSwapIntervalUpdate for updating client's
+     * swapinterval
+     */
+    surface->pendingSwapIntervalUpdate = EGL_TRUE;
     window->driver_private = surface;
     window->resize_callback = resize_callback;
     if (surface->wlEglWinVer >= WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE) {

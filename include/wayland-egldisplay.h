@@ -43,13 +43,12 @@ typedef struct WlEglDisplayRec {
 
     EGLBoolean         ownNativeDpy;
     struct wl_display *nativeDpy;
-    struct wl_list     evtQueueList;
-    struct wl_list     dangEvtQueueList;
 
     struct wl_registry             *wlRegistry;
     struct wl_eglstream_display    *wlStreamDpy;
     struct wl_eglstream_controller *wlStreamCtl;
     unsigned int                    wlStreamCtlVer;
+    struct wl_event_queue          *wlEventQueue;
     struct {
         unsigned int stream_fd     : 1;
         unsigned int stream_inet   : 1;
@@ -120,8 +119,6 @@ EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data);
 const char* wlEglQueryStringExport(void *data,
                                    EGLDisplay dpy,
                                    EGLExtPlatformString name);
-
-struct wl_event_queue* wlGetTrackedEventQueue(WlEglDisplay *display);
 
 #ifdef __cplusplus
 }

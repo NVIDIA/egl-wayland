@@ -57,9 +57,27 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         err = EGL_BAD_SURFACE;
         goto fail;
     }
-    wlExternalApiUnlock();
 
     surface = eglSurface;
+    if (surface->pendingSwapIntervalUpdate == EGL_TRUE) {
+        /* Send request from client to override swapinterval value based on
+         * server's swapinterval for overlay compositing
+         */
+        wl_eglstream_display_swap_interval(display->wlStreamDpy,
+                                           surface->ctx.wlStreamResource,
+                                           surface->swapInterval);
+        /* For receiving any event in case of override */
+        if (wl_display_roundtrip_queue(display->nativeDpy,
+                                       display->wlEventQueue) < 0) {
+            err = EGL_BAD_ALLOC;
+            wlExternalApiUnlock();
+            goto fail;
+        }
+        surface->pendingSwapIntervalUpdate = EGL_FALSE;
+    }
+
+    wlExternalApiUnlock();
+
 
     // Acquire wlEglSurface lock.
     pthread_mutex_lock(&surface->mutexLock);
@@ -70,7 +88,6 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
     }
 
     isOffscreen = surface->ctx.isOffscreen;
-
     if (!isOffscreen) {
         if (!wlEglIsWaylandWindowValid(surface->wlEglWin)) {
             err = EGL_BAD_NATIVE_WINDOW;
@@ -167,12 +184,13 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
         goto done;
     }
 
-    wl_eglstream_display_swap_interval(display->wlStreamDpy,
-                                       surface->ctx.wlStreamResource,
-                                       interval);
-
     /* Cache interval value so we can reset it upon surface reattach */
     surface->swapInterval = interval;
+
+    /* Set client's pendingSwapIntervalUpdate for updating client's
+     * swapinterval
+     */
+    surface->pendingSwapIntervalUpdate = EGL_TRUE;
 
 done:
     wlExternalApiUnlock();
@@ -181,6 +199,25 @@ done:
 }
 
 EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
+
+    wlExternalApiLock();
+    if (surface->pendingSwapIntervalUpdate == EGL_TRUE) {
+        /* Send request from client to override swapinterval value based on
+         * server's swapinterval for overlay compositing
+         */
+        wl_eglstream_display_swap_interval(surface->wlEglDpy->wlStreamDpy,
+                                           surface->ctx.wlStreamResource,
+                                           surface->swapInterval);
+        /* For receiving any event in case of override */
+        if (wl_display_roundtrip_queue(surface->wlEglDpy->nativeDpy,
+                                       surface->wlEglDpy->wlEventQueue) < 0) {
+            wlExternalApiUnlock();
+            return EGL_FALSE;
+        }
+        surface->pendingSwapIntervalUpdate = EGL_FALSE;
+    }
+
+    wlExternalApiUnlock();
 
     // Acquire wlEglSurface lock.
     pthread_mutex_lock(&surface->mutexLock);

@@ -64,30 +64,6 @@ int wlExternalApiUnlock(void);
 void wlExternalApiDestroyLock(void);
 
 /*
- * WlThread structure
- *
- * Keeps all thread-specific data required by the Wayland external platform
- * implementation to manage resources relevant to multi-threaded environments.
- */
-typedef struct WlThreadRec {
-    struct wl_list evtQueueList;
-    int processExiting;
-} WlThread;
-
-
-/*
- * wlEglGetThread()
- *
- * Returns the current thread's WlThread storage. If it doesn't exist yet, it
- * creates it. Callers don't need to worry about destroying the returned storage
- * data since proper global destructors are set up.
- *
- * Returns a pointer to the thread's WlThread storage upon success; otherwise,
- * returns NULL.
- */
-WlThread* wlGetThread(void);
-
-/*
  * wlEglInitializeMutex(pthread_mutex_t *mutex)
  *
  * Initialises the pthread mutex referenced by mutex.

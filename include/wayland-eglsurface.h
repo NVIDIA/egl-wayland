@@ -57,6 +57,7 @@ typedef struct WlEglSurfaceRec {
     WlEglDisplay *wlEglDpy;
     EGLConfig     eglConfig;
     EGLint       *attribs;
+    EGLBoolean    pendingSwapIntervalUpdate;
 
     struct wl_egl_window *wlEglWin;
     long int              wlEglWinVer;
