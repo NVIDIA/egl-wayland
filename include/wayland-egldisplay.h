@@ -121,11 +121,7 @@ const char* wlEglQueryStringExport(void *data,
                                    EGLDisplay dpy,
                                    EGLExtPlatformString name);
 
-struct wl_event_queue* wlGetEventQueue(WlEglDisplay *display);
-void wlUpdateQueueBusyStatus(WlEglDisplay *display,
-                             struct wl_event_queue *queue,
-                             EGLBoolean isBusy);
-int wlEglRoundtrip(WlEglDisplay *display, struct wl_event_queue *queue, EGLBoolean lockSuspend);
+struct wl_event_queue* wlGetTrackedEventQueue(WlEglDisplay *display);
 
 #ifdef __cplusplus
 }

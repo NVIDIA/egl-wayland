@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2019, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -27,7 +27,6 @@
 
 #include "wayland-thread.h"
 #include "wayland-egldisplay.h"
-#include <pthread.h>
 #include <stdlib.h>
 #include <assert.h>
 
@@ -221,4 +220,33 @@ WlThread* wlGetThread(void)
     }
 
     return wlThread;
+}
+
+bool wlEglInitializeMutex(pthread_mutex_t *mutex)
+{
+    pthread_mutexattr_t attr;
+    bool ret = true;
+
+    if (pthread_mutexattr_init(&attr)) {
+        return false;
+    }
+
+    if (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK)) {
+        ret = false;
+        goto done;
+    }
+
+    if (pthread_mutex_init(mutex, &attr)) {
+        ret = false;
+        goto done;
+    }
+
+done:
+    pthread_mutexattr_destroy(&attr);
+    return ret;
+}
+
+void wlEglMutexDestroy(pthread_mutex_t *mutex)
+{
+    pthread_mutex_destroy(mutex);
 }

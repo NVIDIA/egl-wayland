@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016-2018, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2016-2019, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,6 +24,8 @@
 #define WAYLAND_THREAD_H
 
 #include <wayland-client.h>
+#include <pthread.h>
+#include <stdbool.h>
 
 /*
  * wlExternalApiLock()
@@ -84,5 +86,19 @@ typedef struct WlThreadRec {
  * returns NULL.
  */
 WlThread* wlGetThread(void);
+
+/*
+ * wlEglInitializeMutex(pthread_mutex_t *mutex)
+ *
+ * Initialises the pthread mutex referenced by mutex.
+ */
+bool wlEglInitializeMutex(pthread_mutex_t *mutex);
+
+/*
+ * wlEglMutexDestroy(pthread_mutex_t *mutex)
+ *
+ * Destroys the pthread mutex referenced by mutex.
+ */
+void wlEglMutexDestroy(pthread_mutex_t *mutex);
 
 #endif
