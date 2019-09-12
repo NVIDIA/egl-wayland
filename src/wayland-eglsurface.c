@@ -71,8 +71,7 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
             return EGL_FALSE;
         }
     }
-    return wlEglCheckInterfaceType((struct wl_object *)surface,
-                                   "wl_surface_interface");
+    return WL_CHECK_INTERFACE_TYPE(surface, wl_surface_interface);
 #else
     /*
      * Note that dereferencing an invalid surface pointer could mean an old
@@ -708,6 +707,7 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
         close(socket[1]);
     }
 
+    wl_array_release(&wlAttribs);
     return EGL_SUCCESS;
 
 fail:
@@ -769,16 +769,30 @@ create_surface_context(WlEglSurface *surface)
     WlEglDisplay          *display     = surface->wlEglDpy;
     WlEglPlatformData     *data        = display->data;
     struct wl_egl_window  *window      = surface->wlEglWin;
+    int                    winWidth    = 0;
+    int                    winHeight   = 0;
+    int                    winDx       = 0;
+    int                    winDy       = 0;
     EGLint                 synchronous = EGL_FALSE;
     EGLint                 err         = EGL_SUCCESS;
     struct wl_array        wlAttribs;
     intptr_t              *wlAttribsData;
 
     assert(surface->ctx.eglSurface == EGL_NO_SURFACE);
-    /* Width and height are the first and second attributes respectively */
     if (surface->isSurfaceProducer) {
-        surface->attribs[1] = window->width;
-        surface->attribs[3] = window->height;
+        winWidth  = window->width;
+        winHeight = window->height;
+        winDx     = window->dx;
+        winDy     = window->dy;
+
+        /* Width and height are the first and second attributes respectively */
+        surface->attribs[1] = winWidth;
+        surface->attribs[3] = winHeight;
+    } else {
+        winWidth  = surface->width;
+        winHeight = surface->height;
+        winDx     = surface->dx;
+        winDy     = surface->dy;
     }
 
     /* First, create the underlying wl_eglstream and EGLStream */
@@ -823,6 +837,7 @@ create_surface_context(WlEglSurface *surface)
                                                                       surface->wlSurface,
                                                                       surface->ctx.wlStreamResource,
                                                                       &wlAttribs);
+            wl_array_release(&wlAttribs);
         } else {
             wl_eglstream_controller_attach_eglstream_consumer(display->wlStreamCtl,
                                                               surface->wlSurface,
@@ -831,8 +846,8 @@ create_surface_context(WlEglSurface *surface)
     } else {
         wl_surface_attach(surface->wlSurface,
                           surface->ctx.wlStreamResource,
-                          window->dx,
-                          window->dy);
+                          winDx,
+                          winDy);
         wl_surface_commit(surface->wlSurface);
 
         /* Since we are using the legacy method of overloading wl_surface_attach
@@ -882,12 +897,12 @@ create_surface_context(WlEglSurface *surface)
 
     /* Cache current window size and displacement for future checks */
     if (surface->isSurfaceProducer) {
-        surface->width = window->width;
-        surface->height = window->height;
-        surface->dx = window->dx;
-        surface->dy = window->dy;
-        window->attached_width = surface->width;
-        window->attached_height = surface->height;
+        surface->width = winWidth;
+        surface->height = winHeight;
+        surface->dx = winDx;
+        surface->dy = winDy;
+        window->attached_width = winWidth;
+        window->attached_height = winHeight;
     }
 
     return EGL_SUCCESS;
@@ -918,6 +933,7 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
     }
 
     wl_list_insert(&wlEglSurfaceList, &surface->link);
+    wl_list_init(&surface->oldCtxList);
 
     /* Set client's pendingSwapIntervalUpdate for updating client's
      * swapinterval

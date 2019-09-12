@@ -6,7 +6,7 @@ project('wayland-eglstream', 'c',
           'warning_level=1',
         ],
         license : 'MIT',
-        meson_version : '>= 0.43'
+        meson_version : '>= 0.50'
 )
 
 cc = meson.get_compiler('c')
