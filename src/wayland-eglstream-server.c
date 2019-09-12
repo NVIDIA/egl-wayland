@@ -91,6 +91,7 @@ handle_create_stream(struct wl_client *client,
     wlStream->width = width;
     wlStream->height = height;
     wlStream->handle = -1;
+    wlStream->yInverted = EGL_FALSE;
 
     memset(&sockAddr, 0, sizeof(sockAddr));
 
@@ -136,6 +137,16 @@ handle_create_stream(struct wl_client *client,
                 }
                 sockAddr.sin_port = htons((int)attr[1]);
                 mask |= MASK(WL_EGLSTREAM_ATTRIB_INET_PORT);
+                break;
+
+            case WL_EGLSTREAM_ATTRIB_Y_INVERTED:
+                /* Y_INVERTED should only be set once */
+                if (mask & MASK(WL_EGLSTREAM_ATTRIB_Y_INVERTED)) {
+                    err = WL_EGLSTREAM_ERROR_BAD_ATTRIBS;
+                    goto error_create_stream;
+                }
+                wlStream->yInverted = (EGLBoolean)attr[1];
+                mask |= MASK(WL_EGLSTREAM_ATTRIB_Y_INVERTED);
                 break;
 
             default:

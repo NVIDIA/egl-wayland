@@ -609,7 +609,8 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
         }
 
         /* Fill the wlAttribs array with the connection data. */
-        if (!wl_array_add(&wlAttribs, 4*sizeof(intptr_t))) {
+        if (!(wlAttribsData = (intptr_t *)wl_array_add(&wlAttribs,
+                                                       4*sizeof(intptr_t)))) {
             err = EGL_BAD_ALLOC;
             goto fail;
         }
@@ -618,7 +619,6 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
          * Wayland will convert back to wire format before sending. Assume a
          * local INET connection until cross partition wayland support is added.
          */
-        wlAttribsData = (intptr_t *)wlAttribs.data;
         wlAttribsData[0] = WL_EGLSTREAM_ATTRIB_INET_ADDR;
         wlAttribsData[1] = (intptr_t)INADDR_LOOPBACK;
         wlAttribsData[2] = WL_EGLSTREAM_ATTRIB_INET_PORT;
@@ -645,6 +645,19 @@ static EGLint create_surface_stream_remote(WlEglSurface *surface,
             goto fail;
         }
     }
+
+    if (!(wlAttribsData = (intptr_t *)wl_array_add(&wlAttribs,
+                                                   2*sizeof(intptr_t)))) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    /* If Vulkan, default Y_INVERTED to 'true'. Otherwise, assume OpenGL
+     * orientation (image origin at the lower left corner), which aligns with
+     * what a wayland compositor would consider 'non-y-inverted' */
+    wlAttribsData[0] = WL_EGLSTREAM_ATTRIB_Y_INVERTED;
+    wlAttribsData[1] =
+        (intptr_t)(surface->isSurfaceProducer ? EGL_FALSE : EGL_TRUE);
 
     surface->ctx.wlStreamResource =
         create_wl_eglstream(surface,
@@ -1504,11 +1517,9 @@ EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
              * compositor will consider it as y-inverted */
             *value = (int)((originY == EGL_TOP_NV) ? EGL_TRUE : EGL_FALSE);
         } else {
-            /* No mechanism found to query frame orientation. Assume OpenGL
-             * orientation (image origin at the lower left corner), which
-             * matches to what the wayland compositor would consider as
-             * non-y-inverted */
-            *value = (int)EGL_FALSE;
+            /* No mechanism found to query frame orientation. Set to
+             * stream's default value.*/
+            *value = (int)wlStream->yInverted;
         }
         res = EGL_TRUE;
         goto done;

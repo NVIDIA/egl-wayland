@@ -112,6 +112,19 @@ struct wl_eglstream {
     EGLBoolean   isInet;
     int          handle;
     EGLStreamKHR eglStream;
+
+    /*
+     * The following attribute encodes the default value for a
+     * stream's image inversion relative to wayland protocol
+     * convention. Vulkan apps will be set to 'true', while
+     * OpenGL apps will be set to 'false'.
+     * NOTE: EGL_NV_stream_origin is the authorative source of
+     * truth regarding a stream's frame orientation and should be
+     * queried for an accurate value. The following attribute is a
+     * 'best guess' fallback mechanism which should only be used
+     * when a query to EGL_NV_stream_origin fails.
+     */
+    EGLBoolean yInverted;
 };
 
 #ifdef __cplusplus

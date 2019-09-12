@@ -2,7 +2,7 @@
 <protocol name="stream">
 
   <copyright>
-    Copyright (c) 2014-2016, NVIDIA CORPORATION. All rights reserved.
+    Copyright (c) 2014-2019, NVIDIA CORPORATION. All rights reserved.
 
     Permission is hereby granted, free of charge, to any person obtaining a
     copy of this software and associated documentation files (the "Software"),
@@ -60,15 +60,26 @@
          be passed to a create_stream request -->
     <enum name="attrib">
       <description summary="Stream creation attributes">
-        - inet_addr: The given attribute encodes an IPv4 address of a client
-                     socket. Both IPv4 address and port must be set at the same
-                     time.
+        - inet_addr:  The given attribute encodes an IPv4 address of a client
+                      socket. Both IPv4 address and port must be set at the same
+                      time.
 
-        - inet_port: The given attribute encodes a port of a client socket. Both
-                     IPv4 address and port must be set at the same time.
+        - inet_port:  The given attribute encodes a port of a client socket.
+                      Both IPv4 address and port must be set at the same time.
+
+        - y_inverted: The given attribute encodes the default value for a
+                      stream's image inversion relative to wayland protocol
+                      convention. Vulkan apps will be set to 'true', while
+                      OpenGL apps will be set to 'false'.
+                      NOTE: EGL_NV_stream_origin is the authorative source of
+                      truth regarding a stream's frame orientation and should be
+                      queried for an accurate value. The given attribute is a
+                      'best guess' fallback mechanism which should only be used
+                      when a query to EGL_NV_stream_origin fails.
       </description>
       <entry name="inet_addr" value="0" summary="Inet IPv4 address"/>
       <entry name="inet_port" value="1" summary="IP port"/>
+      <entry name="y_inverted" value="2" summary="Image Y-inversion bit"/>
     </enum>
   </interface>
 
