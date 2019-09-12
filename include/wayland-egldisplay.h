@@ -28,6 +28,7 @@
 #include <wayland-client.h>
 #include "wayland-external-exports.h"
 #include "wayland-eglhandle.h"
+#include "wayland-egldevice.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -36,15 +37,6 @@ extern "C" {
 /* This define represents the version of the wl_eglstream_controller interface
    when the attach_eglstream_consumer_attrib() request was first available" */
 #define WL_EGLSTREAM_CONTROLLER_ATTACH_EGLSTREAM_CONSUMER_ATTRIB_SINCE 2
-
-typedef struct WlEglDeviceDpyRec {
-    EGLDeviceEXT eglDevice;
-    EGLDisplay   eglDisplay;
-
-    unsigned int refCount;
-
-    struct wl_list link;
-} WlEglDeviceDpy;
 
 typedef struct WlEglDisplayRec {
     WlEglDeviceDpy *devDpy;
@@ -65,23 +57,24 @@ typedef struct WlEglDisplayRec {
     } caps;
 
     WlEglPlatformData *data;
-    struct {
-        unsigned int stream                     : 1;
-        unsigned int stream_attrib              : 1;
-        unsigned int stream_cross_process_fd    : 1;
-        unsigned int stream_remote              : 1;
-        unsigned int stream_producer_eglsurface : 1;
-        unsigned int stream_fifo_synchronous    : 1;
-        unsigned int stream_sync                : 1;
-        unsigned int stream_flush               : 1;
-        unsigned int display_reference          : 1;
-    } exts;
+
+    EGLBoolean useRefCount;
+
+    /**
+     * The number of times that eglTerminate has to be called before the
+     * display is termianted.
+     *
+     * If \c useRefCount is true, then this is incremented each time
+     * eglInitialize is called, and decremented each time eglTerminate is
+     * called.
+     *
+     * If \c useRefCount is false, then this value is capped at 1.
+     *
+     * In all cases, the display is initialized if (initCount > 0).
+     */
+    unsigned int initCount;
 
     struct wl_list link;
-    EGLBoolean useRefCount;
-    unsigned int refCount;
-
-    EGLBoolean initialized;
 } WlEglDisplay;
 
 typedef struct WlEventQueueRec {
@@ -113,6 +106,11 @@ EGLBoolean wlEglGetConfigAttribHook(EGLDisplay dpy,
                                     EGLConfig config,
                                     EGLint attribute,
                                     EGLint * value);
+
+EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
+                                       EGLint name,
+                                       EGLAttrib *value);
+
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy);
 EGLBoolean wlEglIsWlEglDisplay(WlEglDisplay *display);

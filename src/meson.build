@@ -16,6 +16,7 @@ endif
 
 src = [
     'wayland-thread.c',
+    'wayland-egldevice.c',
     'wayland-egldisplay.c',
     'wayland-eglstream.c',
     'wayland-eglstream-server.c',

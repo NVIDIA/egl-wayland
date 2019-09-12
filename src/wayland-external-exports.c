@@ -48,6 +48,8 @@ static const WlEglHook wlEglHooksMap[] = {
     { "eglDestroySurface",                 wlEglDestroySurfaceHook },
     { "eglGetConfigAttrib",                wlEglGetConfigAttribHook },
     { "eglInitialize",                     wlEglInitializeHook },
+    { "eglQueryDisplayAttribEXT",          wlEglQueryDisplayAttribHook },
+    { "eglQueryDisplayAttribKHR",          wlEglQueryDisplayAttribHook },
     { "eglQueryWaylandBufferWL",           wlEglQueryNativeResourceHook },
     { "eglSwapBuffers",                    wlEglSwapBuffersHook },
     { "eglSwapBuffersWithDamageKHR",       wlEglSwapBuffersWithDamageHook },

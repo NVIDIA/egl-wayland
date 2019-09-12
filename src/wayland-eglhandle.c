@@ -42,6 +42,8 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
         return NULL;
     }
 
+    wl_list_init(&res->deviceDpyList);
+
     /* Cache the EGL driver version */
 #if EGL_EXTERNAL_PLATFORM_HAS(DRIVER_VERSION)
     if (EGL_EXTERNAL_PLATFORM_SUPPORTS(apiMajor, apiMinor, DRIVER_VERSION)) {
@@ -114,10 +116,14 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 
     /* Check for required EGL client extensions */
     exts = res->egl.queryString(EGL_NO_DISPLAY, EGL_EXTENSIONS);
+    if (exts == NULL) {
+        goto fail;
+    }
     if (!wlEglFindExtension("EGL_EXT_platform_base",   exts) ||
         !wlEglFindExtension("EGL_EXT_platform_device", exts)) {
         goto fail;
     }
+    res->supportsDisplayReference = wlEglFindExtension("EGL_KHR_display_reference", exts);
 
     /* Cache driver imports */
     res->callbacks.setError           = driver->setError;

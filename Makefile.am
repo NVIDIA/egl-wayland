@@ -29,6 +29,7 @@ libnvidia_egl_wayland_la_LDFLAGS =                                              
 
 libnvidia_egl_wayland_la_SOURCES =                            \
     src/wayland-thread.c                                      \
+    src/wayland-egldevice.c                                   \
     src/wayland-egldisplay.c                                  \
     src/wayland-eglstream.c                                   \
     src/wayland-eglstream-server.c                            \

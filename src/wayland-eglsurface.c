@@ -253,7 +253,7 @@ damage_thread(void *args)
             // If there's an unprocessed frame ready, send damage event
             if (surface->ctx.framesFinished !=
                 surface->ctx.framesProcessed) {
-                if (display->exts.stream_flush) {
+                if (display->devDpy->exts.stream_flush) {
                     data->egl.streamFlush(display->devDpy->eglDisplay,
                                           surface->ctx.eglStream);
                 }
@@ -506,8 +506,8 @@ static EGLint create_surface_stream_fd(WlEglSurface *surface,
     /* We don't have any mechanism to check whether the compositor is going to
      * use this surface for composition or not when using cross_process_fd, so
      * just enable FIFO_SYNCHRONOUS if the extensions are supported */
-    if (display->exts.stream_fifo_synchronous &&
-        display->exts.stream_sync &&
+    if (display->devDpy->exts.stream_fifo_synchronous &&
+        display->devDpy->exts.stream_sync &&
         surface->fifoLength > 0) {
         eglAttribs[2] = EGL_STREAM_FIFO_SYNCHRONOUS_NV;
         eglAttribs[3] = EGL_TRUE;
@@ -794,21 +794,21 @@ create_surface_stream(WlEglSurface *surface, struct wl_event_queue *queue)
 #ifdef EGL_NV_stream_remote
     if ((err != EGL_SUCCESS) &&
         display->caps.stream_socket &&
-        display->exts.stream_remote) {
+        display->devDpy->exts.stream_remote) {
         err = create_surface_stream_remote(surface, EGL_FALSE, queue);
     }
 #endif
 
     if ((err != EGL_SUCCESS) &&
         display->caps.stream_fd &&
-        display->exts.stream_cross_process_fd) {
+        display->devDpy->exts.stream_cross_process_fd) {
         err = create_surface_stream_fd(surface, queue);
     }
 
 #ifdef EGL_NV_stream_remote
     if ((err != EGL_SUCCESS) &&
         display->caps.stream_inet &&
-        display->exts.stream_remote) {
+        display->devDpy->exts.stream_remote) {
         err = create_surface_stream_remote(surface, EGL_TRUE, queue);
     }
 #endif
@@ -931,8 +931,8 @@ create_surface_context(WlEglSurface *surface)
 
     /* Check whether we should use a damage thread */
     surface->ctx.useDamageThread =
-                    display->exts.stream_fifo_synchronous &&
-                    display->exts.stream_sync &&
+                    display->devDpy->exts.stream_fifo_synchronous &&
+                    display->devDpy->exts.stream_sync &&
                     data->egl.queryStream(display->devDpy->eglDisplay,
                                           surface->ctx.eglStream,
                                           EGL_STREAM_FIFO_SYNCHRONOUS_NV,
@@ -1198,7 +1198,7 @@ destroy_callback(void *data)
 
     wlExternalApiLock();
 
-    if (!surface || !surface->wlEglDpy->initialized) {
+    if (!surface || surface->wlEglDpy->initCount == 0) {
         wlExternalApiUnlock();
         return;
     }
@@ -1249,7 +1249,7 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
 
     wlExternalApiLock();
 
-    if (!display->initialized) {
+    if (display->initCount == 0) {
         err = EGL_NOT_INITIALIZED;
         goto fail;
     }
@@ -1274,10 +1274,10 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
         goto fail;
     }
 
-    if (!display->exts.stream ||
-        (!display->exts.stream_cross_process_fd &&
-         !display->exts.stream_remote) ||
-        !display->exts.stream_producer_eglsurface) {
+    if (!display->devDpy->exts.stream ||
+        (!display->devDpy->exts.stream_cross_process_fd &&
+         !display->devDpy->exts.stream_remote) ||
+        !display->devDpy->exts.stream_producer_eglsurface) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
@@ -1296,8 +1296,8 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     surface->ctx.isOffscreen = EGL_FALSE;
     surface->isSurfaceProducer = EGL_TRUE;
     // FIFO_LENGTH == 1 to set FIFO mode, FIFO_LENGTH == 0 to set MAILBOX mode
-    surface->fifoLength = (display->exts.stream_fifo_synchronous &&
-                           display->exts.stream_sync) ? 1 : 0;
+    surface->fifoLength = (display->devDpy->exts.stream_fifo_synchronous &&
+                           display->devDpy->exts.stream_sync) ? 1 : 0;
 
     getWlEglWindowVersionAndSurface(window,
                                     &surface->wlEglWinVer,
@@ -1453,7 +1453,7 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
     EGLBoolean    err     = EGL_SUCCESS;
 
     wlExternalApiLock();
-    if (!display->initialized) {
+    if (display->initCount == 0) {
         wlEglSetError(display->data, EGL_NOT_INITIALIZED);
         wlExternalApiUnlock();
         return EGL_FALSE;

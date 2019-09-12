@@ -115,6 +115,12 @@ typedef struct WlEglPlatformDataRec {
         PEGLEXTFNSTREAMSWAPINTERVAL streamSwapInterval;
     } callbacks;
 
+    /* True if the driver supports the EGL_KHR_display_reference extension. */
+    EGLBoolean supportsDisplayReference;
+
+    /* A linked list of WlEglDeviceDpy structs. */
+    struct wl_list deviceDpyList;
+
     /* pthread key for TLS */
     pthread_key_t tlsKey;
 } WlEglPlatformData;

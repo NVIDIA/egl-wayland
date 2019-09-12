@@ -47,7 +47,7 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
 
     wlExternalApiLock();
 
-    if (!display->initialized) {
+    if (display->initCount == 0) {
         err = EGL_NOT_INITIALIZED;
         goto fail;
     }
@@ -96,7 +96,7 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
     if (isOffscreen) {
         goto done;
     }
-    if (display->exts.stream_flush) {
+    if (display->devDpy->exts.stream_flush) {
         data->egl.streamFlush(eglDisplay, eglStream);
     }
     wlExternalApiLock();
@@ -197,7 +197,7 @@ EGLBoolean wlEglPostPresentExport(WlEglSurface *surface) {
     struct wl_event_queue *queue   = NULL;
     EGLBoolean             res     = EGL_TRUE;
 
-    if (display->exts.stream_flush) {
+    if (display->devDpy->exts.stream_flush) {
         data->egl.streamFlush((EGLDisplay) display, surface->ctx.eglStream);
     }
 
