@@ -37,6 +37,7 @@
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <fcntl.h>
+#include <EGL/eglmesaext.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
