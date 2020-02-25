@@ -26,6 +26,7 @@
 #ifndef EGL_WL_wayland_eglstream
 #define EGL_WL_wayland_eglstream 1
 #define EGL_WAYLAND_EGLSTREAM_WL              0x334B
+#define EGL_WAYLAND_Y_INVERTED_WL             0x31DB /* eglQueryWaylandBufferWL attribute */
 #endif /* EGL_WL_wayland_eglstream */
 
 #ifndef EGL_NV_stream_fifo_synchronous
