@@ -459,6 +459,12 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
 
     if (display->initCount > 0) {
         // This display has already been initialized.
+        if (major) {
+                *major = display->devDpy->major;
+        }
+        if (minor) {
+                *minor = display->devDpy->minor;
+        }
         if (display->useRefCount) {
             display->initCount++;
         }
