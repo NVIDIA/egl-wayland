@@ -1107,7 +1107,6 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
     WlEglSurfaceCtx       *next    = NULL;
 
     if (!wlEglIsWlEglSurface(surface) || display != surface->wlEglDpy) {
-        wlEglSetError(display->data, EGL_BAD_SURFACE);
         return EGL_FALSE;
     }
 
@@ -1460,13 +1459,16 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
 
     if (display->initCount == 0) {
         wlEglSetError(display->data, EGL_NOT_INITIALIZED);
-        wlExternalApiUnlock();
-        return EGL_FALSE;
+        goto done;
     }
 
     ret = wlEglDestroySurface(dpy, eglSurface);
-    wlExternalApiUnlock();
+    if (!ret) {
+        wlEglSetError(display->data, EGL_BAD_SURFACE);
+    }
 
+done:
+    wlExternalApiUnlock();
     return ret;
 }
 
