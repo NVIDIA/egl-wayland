@@ -315,6 +315,8 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
     EGLStreamKHR       stream   = ctx->eglStream;
     void              *resource = ctx->wlStreamResource;
 
+    finish_wl_eglstream_damage_thread(surface, ctx, 1);
+
     ctx->eglSurface       = EGL_NO_SURFACE;
     ctx->eglStream        = EGL_NO_STREAM_KHR;
     ctx->wlStreamResource = NULL;
@@ -331,8 +333,6 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
         data->egl.destroyStream(dpy, stream);
         ctx->eglStream = EGL_NO_STREAM_KHR;
     }
-
-    finish_wl_eglstream_damage_thread(surface, ctx, 1);
 
     if (resource) {
         wl_buffer_destroy(resource);
