@@ -40,6 +40,7 @@
 #include "wayland-eglstream.h"
 #include "wayland-eglswap.h"
 #include "wayland-eglutils.h"
+#include "wayland-thread.h"
 
 #define MASK(_VAL_) (1 << (_VAL_))
 
