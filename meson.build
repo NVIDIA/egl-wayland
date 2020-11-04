@@ -45,20 +45,20 @@ pkgconf.set('WAYLAND_EXTERNAL_VERSION',          meson.project_version())
 pkgconf.set('EGL_EXTERNAL_PLATFORM_MIN_VERSION', '@0@.@1@'.format(wayland_eglstream_major_version, wayland_eglstream_minor_version))
 pkgconf.set('EGL_EXTERNAL_PLATFORM_MAX_VERSION', wayland_eglstream_major_version.to_int() + 1)
 
-generated_pc = [
-    'wayland-eglstream',
-    'wayland-eglstream-protocols'
-]
-
-foreach pc : generated_pc
-    configure_file(
-        input : '@0@.pc.in'.format(pc),
-        output : '@BASENAME@',
-        configuration : pkgconf,
-        install : true,
-        install_dir : join_paths(get_option('datadir'), 'pkgconfig')
-   )
-endforeach
+configure_file(
+    input : 'wayland-eglstream.pc.in',
+    output : '@BASENAME@',
+    configuration : pkgconf,
+    install : true,
+    install_dir : join_paths(get_option('libdir'), 'pkgconfig')
+)
+configure_file(
+    input : 'wayland-eglstream-protocols.pc.in',
+    output : '@BASENAME@',
+    configuration : pkgconf,
+    install : true,
+    install_dir : join_paths(get_option('datadir'), 'pkgconfig')
+)
 
 subdir('wayland-eglstream')
 subdir('src')
