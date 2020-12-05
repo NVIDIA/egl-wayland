@@ -136,7 +136,7 @@ EGLBoolean wlEglCheckInterfaceType(struct wl_object *obj, const char *ifname)
     if (dladdr(*(void **)obj, &info) == 0) {
         return EGL_FALSE;
     }
-    return !strcmp(info.dli_sname, ifname);
+    return info.dli_sname && !strcmp(info.dli_sname, ifname);
 }
 #endif
 
