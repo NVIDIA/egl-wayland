@@ -38,6 +38,7 @@
 #include "wayland-eglstream-server.h"
 #include "wayland-eglstream-server-protocol.h"
 #include "wayland-eglstream.h"
+#include "wayland-drm.h"
 #include "wayland-eglswap.h"
 #include "wayland-eglutils.h"
 #include "wayland-thread.h"
@@ -353,6 +354,9 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
                                            wlStreamDpy,
                                            wl_eglstream_display_global_bind);
 
+    /* Failure is not fatal */
+    wl_drm_display_bind(wlDisplay, wlStreamDpy);
+
     wl_list_insert(&wlStreamDpyList, &wlStreamDpy->link);
 
     return EGL_TRUE;
@@ -361,6 +365,7 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
 void
 wl_eglstream_display_unbind(struct wl_eglstream_display *wlStreamDpy)
 {
+    wl_drm_display_unbind(wlStreamDpy);
     wl_global_destroy(wlStreamDpy->global);
     wl_list_remove(&wlStreamDpy->link);
     free(wlStreamDpy);

@@ -61,4 +61,5 @@ configure_file(
 )
 
 subdir('wayland-eglstream')
+subdir('wayland-drm')
 subdir('src')

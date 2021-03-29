@@ -39,12 +39,15 @@ src = [
     'wayland-eglutils.c',
     'wayland-eglhandle.c',
     'wayland-external-exports.c',
+    'wayland-drm.c',
 
     wayland_eglstream_protocol_c,
     wayland_eglstream_client_protocol_h,
     wayland_eglstream_server_protocol_h,
     wayland_eglstream_controller_protocol_c,
     wayland_eglstream_controller_client_protocol_h,
+    wayland_drm_protocol_c,
+    wayland_drm_server_protocol_h,
 ]
 
 src += client_header.process(wl_dmabuf_xml)

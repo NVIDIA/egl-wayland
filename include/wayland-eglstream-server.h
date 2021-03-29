@@ -94,6 +94,11 @@ struct wl_eglstream_display {
         int stream_origin           : 1;
     } exts;
 
+    struct {
+        const char       *device_name;
+        struct wl_global *global;
+    } *drm;
+
     int caps_override               : 1;
     int supported_caps;
 

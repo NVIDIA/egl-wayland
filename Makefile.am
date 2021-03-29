@@ -6,7 +6,8 @@ lib_LTLIBRARIES = libnvidia-egl-wayland.la
 libnvidia_egl_wayland_la_CFLAGS =       \
     -I$(top_srcdir)/wayland-egl         \
     -I$(top_srcdir)/include             \
-    -I$(top_builddir)/wayland-eglstream
+    -I$(top_builddir)/wayland-eglstream \
+    -I$(top_builddir)/wayland-drm
 
 # Required library flags
 libnvidia_egl_wayland_la_CFLAGS +=      \
@@ -36,10 +37,12 @@ libnvidia_egl_wayland_la_SOURCES =                            \
     src/wayland-eglswap.c                                     \
     src/wayland-eglutils.c                                    \
     src/wayland-eglhandle.c                                   \
+    src/wayland-drm.c                                         \
     src/wayland-external-exports.c
 
 libnvidia_egl_wayland_la_built_public_protocols =             \
-    wayland-eglstream/wayland-eglstream-controller-protocol.c
+    wayland-eglstream/wayland-eglstream-controller-protocol.c \
+    wayland-drm/wayland-drm-protocol.c
 
 libnvidia_egl_wayland_la_built_private_protocols =            \
     wayland-eglstream/wayland-eglstream-protocol.c
@@ -49,7 +52,8 @@ libnvidia_egl_wayland_la_built_client_headers =               \
     wayland-eglstream/wayland-eglstream-controller-client-protocol.h
 
 libnvidia_egl_wayland_la_built_server_headers =               \
-    wayland-eglstream/wayland-eglstream-server-protocol.h
+    wayland-eglstream/wayland-eglstream-server-protocol.h     \
+    wayland-drm/wayland-drm-server-protocol.h
 
 libnvidia_egl_wayland_la_dmabuf_built_client_headers =        \
     linux-dmabuf-unstable-v1-client-protocol.h
@@ -69,7 +73,8 @@ nodist_libnvidia_egl_wayland_la_SOURCES = $(libnvidia_egl_wayland_la_built_sourc
 
 dist_pkgdata_DATA =                                    \
     wayland-eglstream/wayland-eglstream.xml            \
-    wayland-eglstream/wayland-eglstream-controller.xml
+    wayland-eglstream/wayland-eglstream-controller.xml \
+    wayland-drm/wayland-drm.xml
 
 wayland_eglstream_pkgconfig_files = \
     wayland-eglstream.pc            \

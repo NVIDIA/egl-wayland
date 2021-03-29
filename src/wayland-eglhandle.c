@@ -93,6 +93,10 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
     GET_PROC(getError,                    eglGetError);
     GET_PROC(releaseThread,               eglReleaseThread);
 
+    /* From EGL_EXT_device_query, used by the wayland-drm implementation */
+    GET_PROC(queryDisplayAttrib,          eglQueryDisplayAttribEXT);
+    GET_PROC(queryDeviceString,           eglQueryDeviceStringEXT);
+
 #undef GET_PROC
 
     /* Fetch all optional driver functions */
@@ -109,8 +113,6 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 
     /* Stream flush */
     GET_PROC(streamFlush,                 eglStreamFlushNV);
-
-    GET_PROC(queryDisplayAttrib,          eglQueryDisplayAttribKHR);
 
     /* EGLImage Stream consumer and dependencies */
     GET_PROC(streamImageConsumerConnect,  eglStreamImageConsumerConnectNV);
@@ -129,6 +131,13 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
     if (exts == NULL) {
         goto fail;
     }
+
+    /*
+     * Note EGL_EXT_platform_device implies support for EGL_EXT_device_base,
+     * which is equivalent to the combination of EGL_EXT_device_query and
+     * EGL_EXT_device_enumeration. The wayland-drm implementation assumes
+     * EGL_EXT_device_query is supported based on this check.
+     */
     if (!wlEglFindExtension("EGL_EXT_platform_base",   exts) ||
         !wlEglFindExtension("EGL_EXT_platform_device", exts)) {
         goto fail;

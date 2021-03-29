@@ -97,7 +97,8 @@ typedef struct WlEglPlatformDataRec {
         PWLEGLFNGETERRORCOREPROC                    getError;
         PWLEGLFNRELEASETHREADCOREPROC               releaseThread;
 
-        PFNEGLQUERYDISPLAYATTRIBKHRPROC             queryDisplayAttrib;
+        PFNEGLQUERYDISPLAYATTRIBEXTPROC             queryDisplayAttrib;
+        PFNEGLQUERYDEVICESTRINGEXTPROC              queryDeviceString;
 
         /* Used for fifo_synchronous support */
         PFNEGLQUERYSTREAMKHRPROC                    queryStream;
