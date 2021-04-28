@@ -127,6 +127,7 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
 
         /* Clean up */
         close(fd);
+        wlStream->handle = -1;
     }
 #if defined(EGL_NV_stream_attrib) && \
     defined(EGL_NV_stream_remote) && \
