@@ -33,7 +33,7 @@
 #include <assert.h>
 
 /* TODO: Make global display lists hang off platform data */
-static struct wl_list wlEglDisplayList   = WL_LIST_INIT(&wlEglDisplayList);
+static struct wl_list wlEglDisplayList = WL_LIST_INITIALIZER(&wlEglDisplayList);
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 {
@@ -80,13 +80,15 @@ EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
 
 EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy)
 {
+    /* Retrieve extension string before taking external API lock */
+    const char *exts = ((WlEglPlatformData *)data)->egl.queryString(dpy, EGL_EXTENSIONS);
     EGLBoolean res = EGL_FALSE;
 
     wlExternalApiLock();
 
     res = wl_eglstream_display_bind((WlEglPlatformData *)data,
                                     (struct wl_display *)nativeDpy,
-                                    dpy);
+                                    dpy, exts);
 
     wlExternalApiUnlock();
 
@@ -197,11 +199,11 @@ eglstream_display_handle_swapinterval_override(
                                     int32_t swapinterval,
                                     struct wl_buffer *streamResource)
 {
+    WlEglDisplay *dpy = (WlEglDisplay *)data;
     WlEglSurface *surf = NULL;
-    (void) data;
     (void) wlStreamDpy;
 
-    wl_list_for_each(surf, &wlEglSurfaceList, link) {
+    wl_list_for_each(surf, &dpy->wlEglSurfaceList, link) {
         if (surf->ctx.wlStreamResource == streamResource) {
             WlEglPlatformData *pData = surf->wlEglDpy->data;
             EGLDisplay         dpy   = surf->wlEglDpy->devDpy->eglDisplay;
@@ -237,10 +239,8 @@ static const struct wl_eglstream_display_listener eglstream_display_listener = {
  * destroying some resources during EGL system termination, only when
  * terminateDisplay is called from wlEglDestroyAllDisplays.
  */
-static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean globalTeardown)
+static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeardown)
 {
-    WlEglDisplay      *display       = (WlEglDisplay *)dpy;
-
     if (display->initCount == 0) {
         return EGL_TRUE;
     }
@@ -283,11 +283,12 @@ static EGLBoolean terminateDisplay(EGLDisplay dpy, EGLBoolean globalTeardown)
 
 EGLBoolean wlEglTerminateHook(EGLDisplay dpy)
 {
+    WlEglDisplay *display = (WlEglDisplay *)dpy;
     EGLBoolean res;
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
     res = terminateDisplay(dpy, EGL_FALSE);
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
 
     return res;
 }
@@ -426,6 +427,13 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         goto fail;
     }
 
+    if (!wlEglInitializeMutex(&display->mutex)) {
+        wlExternalApiUnlock();
+        goto fail;
+    }
+    WL_LIST_INIT(&display->wlEglSurfaceList);
+
+
     // The newly created WlEglDisplay has been set up properly, insert it
     // in wlEglDisplayList.
     wl_list_insert(&wlEglDisplayList, &display->link);
@@ -455,7 +463,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     EGLint                 err          = EGL_SUCCESS;
     int                    ret          = 0;
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
 
     if (display->initCount > 0) {
         // This display has already been initialized.
@@ -468,12 +476,12 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         if (display->useRefCount) {
             display->initCount++;
         }
-        wlExternalApiUnlock();
+        pthread_mutex_unlock(&display->mutex);
         return EGL_TRUE;
     }
 
     if (!wlInternalInitialize(display->devDpy)) {
-        wlExternalApiUnlock();
+        pthread_mutex_unlock(&display->mutex);
         return EGL_FALSE;
     }
 
@@ -527,7 +535,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         *minor = display->devDpy->minor;
     }
 
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
     return EGL_TRUE;
 
 fail:
@@ -535,7 +543,7 @@ fail:
     if (err != EGL_SUCCESS) {
         wlEglSetError(data, err);
     }
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
     return EGL_FALSE;
 }
 
@@ -670,11 +678,11 @@ EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
         return EGL_FALSE;
     }
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
 
     if (display->initCount == 0) {
         wlEglSetError(data, EGL_NOT_INITIALIZED);
-        wlExternalApiUnlock();
+        pthread_mutex_unlock(&display->mutex);
         return EGL_FALSE;
     }
 
@@ -690,7 +698,7 @@ EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
         break;
     }
 
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
     return ret;
 }
 
@@ -708,6 +716,7 @@ EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data)
             if (display->ownNativeDpy) {
                 wl_display_disconnect(display->nativeDpy);
             }
+            wlEglMutexDestroy(&display->mutex);
             wl_list_remove(&display->link);
             /* Destroy the external display */
             free(display);

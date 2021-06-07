@@ -40,13 +40,11 @@
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
-struct wl_list wlEglSurfaceList = WL_LIST_INIT(&wlEglSurfaceList);
-
-EGLBoolean wlEglIsWlEglSurface(WlEglSurface *surface)
+EGLBoolean wlEglIsWlEglSurfaceForDisplay(WlEglDisplay *display, WlEglSurface *surface)
 {
     WlEglSurface *surf;
 
-    wl_list_for_each(surf, &wlEglSurfaceList, link) {
+    wl_list_for_each(surf, &display->wlEglSurfaceList, link) {
         if (surf == surface) {
             return EGL_TRUE;
         }
@@ -916,23 +914,23 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
 {
     WlEglDisplay *display = surface->wlEglDpy;
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
     // Create per surface wayland queue
     surface->wlEventQueue = wl_display_create_queue(display->nativeDpy);
     surface->refCount = 1;
 
     if (!wlEglInitializeMutex(&surface->mutexLock)) {
-        wlExternalApiUnlock();
+        pthread_mutex_unlock(&display->mutex);
         return EGL_FALSE;
     }
 
     if (create_surface_context(surface) != EGL_SUCCESS) {
         wl_event_queue_destroy(surface->wlEventQueue);
-        wlExternalApiUnlock();
+        pthread_mutex_unlock(&display->mutex);
         return EGL_FALSE;
     }
 
-    wl_list_insert(&wlEglSurfaceList, &surface->link);
+    wl_list_insert(&display->wlEglSurfaceList, &surface->link);
     wl_list_init(&surface->oldCtxList);
 
     /* Set client's pendingSwapIntervalUpdate for updating client's
@@ -940,7 +938,7 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
      */
     surface->pendingSwapIntervalUpdate = EGL_TRUE;
 
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
     return EGL_TRUE;
 }
 
@@ -1074,10 +1072,11 @@ static EGLint assignWlEglSurfaceAttribs(WlEglSurface *surface,
     return EGL_SUCCESS;
 }
 
-EGLBoolean wlEglSurfaceRef(WlEglSurface *surface)
+EGLBoolean wlEglSurfaceRef(WlEglDisplay *display, WlEglSurface *surface)
 {
 
-    if (!wlEglIsWlEglSurface(surface) || surface->wlEglDpy->initCount == 0) {
+    if (!wlEglIsWlEglSurfaceForDisplay(display, surface) ||
+        surface->wlEglDpy->initCount == 0) {
         return EGL_FALSE;
     }
 
@@ -1106,7 +1105,8 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
     WlEglSurfaceCtx       *ctx     = NULL;
     WlEglSurfaceCtx       *next    = NULL;
 
-    if (!wlEglIsWlEglSurface(surface) || display != surface->wlEglDpy) {
+    if (!wlEglIsWlEglSurfaceForDisplay(display, surface) ||
+        display != surface->wlEglDpy) {
         return EGL_FALSE;
     }
 
@@ -1174,17 +1174,18 @@ static void
 destroy_callback(void *data)
 {
     WlEglSurface *surface = (WlEglSurface*)data;
+    WlEglDisplay *display = surface->wlEglDpy;
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
 
     if (!surface || surface->wlEglDpy->initCount == 0) {
-        wlExternalApiUnlock();
+        pthread_mutex_unlock(&display->mutex);
         return;
     }
 
     wlEglDestroySurface((EGLDisplay)surface->wlEglDpy,
                         (EGLSurface)surface);
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
 }
 
 static void
@@ -1226,7 +1227,7 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     EGLint                err     = EGL_SUCCESS;
     EGLint                surfType;
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
 
     if (display->initCount == 0) {
         err = EGL_NOT_INITIALIZED;
@@ -1315,8 +1316,8 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
         window->destroy_window_callback = destroy_callback;
     }
 
-    wl_list_insert(&wlEglSurfaceList, &surface->link);
-    wlExternalApiUnlock();
+    wl_list_insert(&display->wlEglSurfaceList, &surface->link);
+    pthread_mutex_unlock(&display->mutex);
 
     return surface;
 
@@ -1325,7 +1326,7 @@ fail:
         wlEglDestroySurface(display, surface);
     }
 
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
 
     wlEglSetError(data, err);
 
@@ -1385,9 +1386,9 @@ EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
     surface->isDestroyed = EGL_FALSE;
     wl_list_init(&surface->oldCtxList);
 
-    wlExternalApiLock();
-    wl_list_insert(&wlEglSurfaceList, &surface->link);
-    wlExternalApiUnlock();
+    pthread_mutex_lock(&display->mutex);
+    wl_list_insert(&display->wlEglSurfaceList, &surface->link);
+    pthread_mutex_unlock(&display->mutex);
 
     return surface;
 
@@ -1437,9 +1438,9 @@ EGLSurface wlEglCreateStreamProducerSurfaceHook(EGLDisplay dpy,
     surface->isDestroyed = EGL_FALSE;
     wl_list_init(&surface->oldCtxList);
 
-    wlExternalApiLock();
-    wl_list_insert(&wlEglSurfaceList, &surface->link);
-    wlExternalApiUnlock();
+    pthread_mutex_lock(&display->mutex);
+    wl_list_insert(&display->wlEglSurfaceList, &surface->link);
+    pthread_mutex_unlock(&display->mutex);
 
     return surface;
 
@@ -1455,7 +1456,7 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
     WlEglDisplay *display = (WlEglDisplay*)dpy;
     EGLint ret = EGL_FALSE;
 
-    wlExternalApiLock();
+    pthread_mutex_lock(&display->mutex);
 
     if (display->initCount == 0) {
         wlEglSetError(display->data, EGL_NOT_INITIALIZED);
@@ -1468,7 +1469,7 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
     }
 
 done:
-    wlExternalApiUnlock();
+    pthread_mutex_unlock(&display->mutex);
     return ret;
 }
 
@@ -1478,7 +1479,7 @@ EGLBoolean wlEglDestroyAllSurfaces(WlEglDisplay *display)
     WlEglSurface *surface, *next;
     EGLBoolean res = EGL_TRUE;
 
-    wl_list_for_each_safe(surface, next, &wlEglSurfaceList, link) {
+    wl_list_for_each_safe(surface, next, &display->wlEglSurfaceList, link) {
         if (surface->wlEglDpy == display) {
             res = wlEglDestroySurface(display, surface) && res;
         }

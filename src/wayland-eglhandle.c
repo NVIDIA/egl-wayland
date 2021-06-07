@@ -149,10 +149,10 @@ void* wlEglGetInternalHandleExport(EGLDisplay dpy, EGLenum type, void *handle)
         wlEglIsWlEglDisplay((WlEglDisplay *)handle)) {
         handle = (void *)(((WlEglDisplay *)handle)->devDpy->eglDisplay);
     } else if ((type == EGL_OBJECT_SURFACE_KHR) &&
-               wlEglIsWlEglSurface((WlEglSurface *)handle)) {
-        WlEglSurface *surface = (WlEglSurface *)handle;
-        if (dpy == surface->wlEglDpy) {
-            handle = (void *)(surface->ctx.eglSurface);
+               wlEglIsWlEglDisplay((WlEglDisplay *)dpy)) {
+        WlEglDisplay *display = (WlEglDisplay *)dpy;
+        if (wlEglIsWlEglSurfaceForDisplay(display, (WlEglSurface *)handle)) {
+            handle = (void *)(((WlEglSurface *)handle)->ctx.eglSurface);
         } else {
             handle = NULL;
         }

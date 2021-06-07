@@ -26,6 +26,7 @@
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <wayland-client.h>
+#include <pthread.h>
 #include "wayland-external-exports.h"
 #include "wayland-eglhandle.h"
 #include "wayland-egldevice.h"
@@ -72,6 +73,10 @@ typedef struct WlEglDisplayRec {
      * In all cases, the display is initialized if (initCount > 0).
      */
     unsigned int initCount;
+
+    pthread_mutex_t mutex;
+
+    struct wl_list wlEglSurfaceList;
 
     struct wl_list link;
 } WlEglDisplay;

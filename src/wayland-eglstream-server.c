@@ -44,7 +44,7 @@
 
 #define MASK(_VAL_) (1 << (_VAL_))
 
-static struct wl_list wlStreamDpyList = WL_LIST_INIT(&wlStreamDpyList);
+static struct wl_list wlStreamDpyList = WL_LIST_INITIALIZER(&wlStreamDpyList);
 
 static void
 destroy_wl_eglstream_resource(struct wl_resource *resource)
@@ -287,10 +287,10 @@ wl_eglstream_display_global_bind(struct wl_client *client,
 EGLBoolean
 wl_eglstream_display_bind(WlEglPlatformData *data,
                           struct wl_display *wlDisplay,
-                          EGLDisplay eglDisplay)
+                          EGLDisplay eglDisplay,
+                          const char *exts)
 {
     struct wl_eglstream_display *wlStreamDpy = NULL;
-    const char                  *exts        = NULL;
     char                        *env         = NULL;
 
     /* Check whether there's an EGLDisplay already bound to the given
@@ -308,10 +308,6 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
     wlStreamDpy->wlDisplay     = wlDisplay;
     wlStreamDpy->eglDisplay    = eglDisplay;
     wlStreamDpy->caps_override = 0;
-
-    wlExternalApiUnlock();
-    exts = data->egl.queryString(eglDisplay, EGL_EXTENSIONS);
-    wlExternalApiLock();
 
 #define CACHE_EXT(_PREFIX_, _NAME_)                                      \
         wlStreamDpy->exts._NAME_ =                                       \

@@ -95,8 +95,6 @@ typedef struct WlEglSurfaceRec {
     pthread_mutex_t mutexLock;
 } WlEglSurface;
 
-extern struct wl_list wlEglSurfaceList;
-
 WL_EXPORT
 EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface);
 
@@ -119,7 +117,7 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface);
 EGLBoolean wlEglDestroyAllSurfaces(WlEglDisplay *display);
 
 EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window);
-EGLBoolean wlEglIsWlEglSurface(WlEglSurface *wlEglSurface);
+EGLBoolean wlEglIsWlEglSurfaceForDisplay(WlEglDisplay *display, WlEglSurface *wlEglSurface);
 
 EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
                                         void *nativeResource,
@@ -132,7 +130,7 @@ EGLBoolean wlEglSendDamageEvent(WlEglSurface *surface,
 void wlEglCreateFrameSync(WlEglSurface *surface);
 EGLint wlEglWaitFrameSync(WlEglSurface *surface);
 
-EGLBoolean wlEglSurfaceRef(WlEglSurface *surface);
+EGLBoolean wlEglSurfaceRef(WlEglDisplay *display, WlEglSurface *surface);
 void wlEglSurfaceUnref(WlEglSurface *surface);
 
 #ifdef __cplusplus

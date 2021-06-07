@@ -36,8 +36,13 @@
         wlEglSetErrorCallback(data, err, __FILE__, __LINE__)
 #endif
 
+#ifndef WL_LIST_INITIALIZER
+#define WL_LIST_INITIALIZER(head) { .prev = (head), .next = (head) }
+#endif
+
 #ifndef WL_LIST_INIT
-#define WL_LIST_INIT(head) { .prev = (head), .next = (head) }
+#define WL_LIST_INIT(head)                                      \
+    do { (head)->prev = (head)->next = (head); } while (0);
 #endif
 
 #if defined(__QNX__)
