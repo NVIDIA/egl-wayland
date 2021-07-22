@@ -115,6 +115,8 @@ EGLBoolean wlInternalInitialize(WlEglDeviceDpy *devDpy)
         CACHE_EXT(NV,  stream_fifo_synchronous);
         CACHE_EXT(NV,  stream_sync);
         CACHE_EXT(NV,  stream_flush);
+        CACHE_EXT(NV,  stream_consumer_eglimage);
+        CACHE_EXT(MESA, image_dma_buf_export);
 
 #undef CACHE_EXT
     }

@@ -709,6 +709,57 @@ fail:
 }
 #endif
 
+static EGLint create_surface_stream_local(WlEglSurface *surface)
+{
+    WlEglDisplay         *display = surface->wlEglDpy;
+    WlEglPlatformData    *data    = display->data;
+    EGLDisplay            dpy     = display->devDpy->eglDisplay;
+    EGLint                eglAttribs[] = {
+        EGL_STREAM_FIFO_LENGTH_KHR, surface->fifoLength,
+        EGL_NONE,                   EGL_NONE,
+        EGL_NONE
+    };
+    EGLint err = EGL_SUCCESS;
+
+    /* We don't have any mechanism to check whether the compositor is going to
+     * use this surface for composition or not when using local streams, so
+     * just enable FIFO_SYNCHRONOUS if the extensions are supported.
+     * Note the use of this mechanism makes the optional sync parameter
+     * passed to eglStreamAcquireImageNV() redundant, so that mechanism is not
+     * used in this library.
+     */
+    if (display->devDpy->exts.stream_fifo_synchronous &&
+        display->devDpy->exts.stream_sync &&
+        surface->fifoLength > 0) {
+        eglAttribs[2] = EGL_STREAM_FIFO_SYNCHRONOUS_NV;
+        eglAttribs[3] = EGL_TRUE;
+    }
+
+    /* First, create the EGLStream */
+    surface->ctx.eglStream =
+        data->egl.createStream(dpy, eglAttribs);
+    if (surface->ctx.eglStream == EGL_NO_STREAM_KHR) {
+        err = data->egl.getError();
+        goto fail;
+    }
+
+    /* Now create the local EGLImage consumer */
+    if (!data->egl.streamImageConsumerConnect(dpy,
+                                              surface->ctx.eglStream,
+                                              0, /* XXX modifier count */
+                                              NULL, /* XXX modifier list */
+                                              NULL)) {
+        err = data->egl.getError();
+        goto fail;
+    }
+
+    return EGL_SUCCESS;
+
+fail:
+    destroy_surface_context(surface, &surface->ctx);
+    return err;
+}
+
 static EGLint
 create_surface_stream(WlEglSurface *surface)
 {
@@ -720,10 +771,20 @@ create_surface_stream(WlEglSurface *surface)
      * there is more than one method giving the same efficiency, the more
      * versatile/configurable one would be preferred:
      *
-     *    1. Cross-process unix sockets
-     *    2. Cross-process FD
-     *    3. Cross-process inet sockets
+     *    1. Local stream + dma-buf
+     *    2. Cross-process unix sockets
+     *    3. Cross-process FD
+     *    4. Cross-process inet sockets
      */
+#ifdef EGL_NV_stream_consumer_eglimage
+    if ((err != EGL_SUCCESS) &&
+        EGL_FALSE && /* Disabled until complete */
+        display->devDpy->exts.stream_consumer_eglimage &&
+        display->devDpy->exts.image_dma_buf_export) {
+        err = create_surface_stream_local(surface);
+    }
+#endif
+
 #ifdef EGL_NV_stream_remote
     if ((err != EGL_SUCCESS) &&
         display->caps.stream_socket &&
@@ -787,68 +848,70 @@ create_surface_context(WlEglSurface *surface)
         goto fail;
     }
 
-    /* Then attach the wl_eglstream so the compositor connects a consumer to the
-     * EGLStream */
-    if (display->wlStreamCtl != NULL) {
-        if (display->wlStreamCtlVer >=
-            WL_EGLSTREAM_CONTROLLER_ATTACH_EGLSTREAM_CONSUMER_ATTRIB_SINCE) {
-            wl_array_init(&wlAttribs);
+    /* If the stream has a server component, attach the wl_eglstream so the
+     * compositor connects a consumer to the EGLStream */
+    if (surface->ctx.wlStreamResource) {
+        if (display->wlStreamCtl != NULL) {
+            if (display->wlStreamCtlVer >=
+                WL_EGLSTREAM_CONTROLLER_ATTACH_EGLSTREAM_CONSUMER_ATTRIB_SINCE) {
+                wl_array_init(&wlAttribs);
 
-            if (!wl_array_add(&wlAttribs, 2 * sizeof(intptr_t))) {
-                wl_array_release(&wlAttribs);
-                err = EGL_BAD_ALLOC;
-                goto fail;
-            }
-
-            wlAttribsData = (intptr_t *)wlAttribs.data;
-            wlAttribsData[0] = WL_EGLSTREAM_CONTROLLER_ATTRIB_PRESENT_MODE;
-
-            if (surface->isSurfaceProducer) {
-                wlAttribsData[1] = WL_EGLSTREAM_CONTROLLER_PRESENT_MODE_DONT_CARE;
-            } else if (surface->fifoLength > 0) {
                 if (!wl_array_add(&wlAttribs, 2 * sizeof(intptr_t))) {
                     wl_array_release(&wlAttribs);
                     err = EGL_BAD_ALLOC;
                     goto fail;
                 }
-                wlAttribsData    = (intptr_t *)wlAttribs.data;
-                wlAttribsData[1] = WL_EGLSTREAM_CONTROLLER_PRESENT_MODE_FIFO;
-                wlAttribsData[2] = WL_EGLSTREAM_CONTROLLER_ATTRIB_FIFO_LENGTH;
-                wlAttribsData[3] = surface->fifoLength;
+
+                wlAttribsData = (intptr_t *)wlAttribs.data;
+                wlAttribsData[0] = WL_EGLSTREAM_CONTROLLER_ATTRIB_PRESENT_MODE;
+
+                if (surface->isSurfaceProducer) {
+                    wlAttribsData[1] = WL_EGLSTREAM_CONTROLLER_PRESENT_MODE_DONT_CARE;
+                } else if (surface->fifoLength > 0) {
+                    if (!wl_array_add(&wlAttribs, 2 * sizeof(intptr_t))) {
+                        wl_array_release(&wlAttribs);
+                        err = EGL_BAD_ALLOC;
+                        goto fail;
+                    }
+                    wlAttribsData    = (intptr_t *)wlAttribs.data;
+                    wlAttribsData[1] = WL_EGLSTREAM_CONTROLLER_PRESENT_MODE_FIFO;
+                    wlAttribsData[2] = WL_EGLSTREAM_CONTROLLER_ATTRIB_FIFO_LENGTH;
+                    wlAttribsData[3] = surface->fifoLength;
+                } else {
+                    wlAttribsData[1] = WL_EGLSTREAM_CONTROLLER_PRESENT_MODE_MAILBOX;
+                }
+
+                wl_eglstream_controller_attach_eglstream_consumer_attribs(display->wlStreamCtl,
+                                                                          surface->wlSurface,
+                                                                          surface->ctx.wlStreamResource,
+                                                                          &wlAttribs);
+                wl_array_release(&wlAttribs);
             } else {
-                wlAttribsData[1] = WL_EGLSTREAM_CONTROLLER_PRESENT_MODE_MAILBOX;
+                wl_eglstream_controller_attach_eglstream_consumer(display->wlStreamCtl,
+                                                                  surface->wlSurface,
+                                                                  surface->ctx.wlStreamResource);
             }
-
-            wl_eglstream_controller_attach_eglstream_consumer_attribs(display->wlStreamCtl,
-                                                                      surface->wlSurface,
-                                                                      surface->ctx.wlStreamResource,
-                                                                      &wlAttribs);
-            wl_array_release(&wlAttribs);
         } else {
-            wl_eglstream_controller_attach_eglstream_consumer(display->wlStreamCtl,
-                                                              surface->wlSurface,
-                                                              surface->ctx.wlStreamResource);
+            wl_surface_attach(surface->wlSurface,
+                              surface->ctx.wlStreamResource,
+                              winDx,
+                              winDy);
+            wl_surface_commit(surface->wlSurface);
+
+            /* Since we are using the legacy method of overloading wl_surface_attach
+             * in order to create the server-side EGLStream here, the compositor
+             * will actually take this as a new buffer. We mark it as 'attached'
+             * because whenever a new wl_surface_attach request is issued, the
+             * compositor will emit back a wl_buffer_release event, and we will
+             * destroy the context then. */
+            surface->ctx.isAttached = EGL_TRUE;
         }
-    } else {
-        wl_surface_attach(surface->wlSurface,
-                          surface->ctx.wlStreamResource,
-                          winDx,
-                          winDy);
-        wl_surface_commit(surface->wlSurface);
 
-        /* Since we are using the legacy method of overloading wl_surface_attach
-         * in order to create the server-side EGLStream here, the compositor
-         * will actually take this as a new buffer. We mark it as 'attached'
-         * because whenever a new wl_surface_attach request is issued, the
-         * compositor will emit back a wl_buffer_release event, and we will
-         * destroy the context then. */
-        surface->ctx.isAttached = EGL_TRUE;
-    }
-
-    if (wl_display_roundtrip_queue(display->nativeDpy,
-                                   surface->wlEventQueue) < 0) {
-        err = EGL_BAD_ALLOC;
-        goto fail;
+        if (wl_display_roundtrip_queue(display->nativeDpy,
+                                       surface->wlEventQueue) < 0) {
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
     }
 
     if (surface->isSurfaceProducer) {

@@ -107,6 +107,9 @@ typedef struct WlEglPlatformDataRec {
         PFNEGLSIGNALSYNCKHRPROC                     signalSync;
         PFNEGLDESTROYSYNCKHRPROC                    destroySync;
         PFNEGLSTREAMFLUSHNVPROC                     streamFlush;
+
+        /* Used for dma-buf surfaces */
+        PFNEGLSTREAMIMAGECONSUMERCONNECTNVPROC      streamImageConsumerConnect;
     } egl;
 
     /* Non-application-facing callbacks provided by the EGL driver */

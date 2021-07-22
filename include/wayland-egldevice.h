@@ -59,6 +59,8 @@ typedef struct WlEglDeviceDpyRec {
         unsigned int stream_fifo_synchronous    : 1;
         unsigned int stream_sync                : 1;
         unsigned int stream_flush               : 1;
+        unsigned int stream_consumer_eglimage   : 1;
+        unsigned int image_dma_buf_export       : 1;
     } exts;
 
     struct wl_list link;

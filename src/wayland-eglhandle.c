@@ -112,6 +112,9 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 
     GET_PROC(queryDisplayAttrib,          eglQueryDisplayAttribKHR);
 
+    /* EGLImage Stream consumer and dependencies */
+    GET_PROC(streamImageConsumerConnect,  eglStreamImageConsumerConnectNV);
+
 #undef GET_PROC
 
     /* Check for required EGL client extensions */
