@@ -23,6 +23,7 @@
 #include "wayland-eglsurface.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
+#include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
 #include "wayland-eglutils.h"
@@ -39,6 +40,14 @@
 #include <fcntl.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
+
+static WlEglStreamImage *
+pop_acquired_image(WlEglSurface *surface);
+
+static void
+remove_surface_image(WlEglDisplay *display,
+                     WlEglSurface *surface,
+                     EGLImageKHR eglImage);
 
 EGLBoolean wlEglIsWlEglSurfaceForDisplay(WlEglDisplay *display, WlEglSurface *surface)
 {
@@ -143,12 +152,32 @@ EGLint wlEglWaitFrameSync(WlEglSurface *surface)
 EGLBoolean
 wlEglSendDamageEvent(WlEglSurface *surface, struct wl_event_queue *queue)
 {
-    /* Attach same buffer to indicate new content for the surface is
-     * made available by the client */
-    wl_surface_attach(surface->wlSurface,
-                      surface->ctx.wlStreamResource,
-                      surface->dx,
-                      surface->dy);
+    if (surface->ctx.wlStreamResource) {
+        /* Attach same buffer to indicate new content for the surface is
+         * made available by the client */
+        wl_surface_attach(surface->wlSurface,
+                          surface->ctx.wlStreamResource,
+                          surface->dx,
+                          surface->dy);
+    } else {
+        WlEglStreamImage *image;
+
+        if (wlEglHandleImageStreamEvents(surface) != EGL_SUCCESS) {
+            return EGL_FALSE;
+        }
+
+        image = pop_acquired_image(surface);
+        if (image) {
+            surface->ctx.currentBuffer = image->buffer;
+            image->attached = EGL_TRUE;
+        }
+
+        wl_surface_attach(surface->wlSurface,
+                          surface->ctx.currentBuffer,
+                          surface->dx,
+                          surface->dy);
+    }
+
     wl_surface_damage(surface->wlSurface, 0, 0,
                       surface->width, surface->height);
     wl_surface_commit(surface->wlSurface);
@@ -300,6 +329,7 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
     EGLSurface         surf     = ctx->eglSurface;
     EGLStreamKHR       stream   = ctx->eglStream;
     void              *resource = ctx->wlStreamResource;
+    uint32_t           i;
 
     finish_wl_eglstream_damage_thread(surface, ctx, 1);
 
@@ -309,6 +339,14 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
 
     if (surf != EGL_NO_SURFACE) {
         data->egl.destroySurface(dpy, surf);
+    }
+
+    for (i = 0; i < ctx->numStreamImages; i++) {
+        if (ctx->streamImages[i]->eglImage != EGL_NO_IMAGE_KHR) {
+            remove_surface_image(display,
+                                 surface,
+                                 ctx->streamImages[i]->eglImage);
+        }
     }
 
     if (surface->ctx.isOffscreen) {
@@ -333,7 +371,7 @@ discard_surface_context(WlEglSurface *surface)
      * displayed. In that case, defer its destruction until we make sure the
      * compositor doesn't need it anymore (i.e. upon stream release);
      * otherwise, we can just destroy it right away */
-    if (surface->ctx.isAttached) {
+    if (surface->ctx.isAttached && surface->ctx.wlStreamResource) {
         WlEglSurfaceCtx *ctx = malloc(sizeof(WlEglSurfaceCtx));
         if (ctx) {
             memcpy(ctx, &surface->ctx, sizeof(*ctx));
@@ -709,6 +747,322 @@ fail:
 }
 #endif
 
+static void
+stream_local_buffer_release_callback(void *ptr, struct wl_buffer *buffer)
+{
+    WlEglSurface       *surface = (WlEglSurface *)ptr;
+    WlEglDisplay       *display = surface->wlEglDpy;
+    WlEglPlatformData  *data    = display->data;
+    WlEglStreamImage   *image;
+    uint32_t            i;
+
+    for (i = 0; i < surface->ctx.numStreamImages; i++) {
+        image = surface->ctx.streamImages[i];
+        if (image->buffer == buffer) {
+            image->attached = EGL_FALSE;
+
+            if (image->eglImage != EGL_NO_IMAGE_KHR) {
+                data->egl.streamReleaseImage(display->devDpy->eglDisplay,
+                                             surface->ctx.eglStream,
+                                             image->eglImage,
+                                             EGL_NO_SYNC_KHR);
+            } else {
+                /*
+                 * If the image has been destroyed while the buffer was attached
+                 * the buffer destruction was deferred. Clean it up now.
+                 */
+                wl_buffer_destroy(image->buffer);
+                image->buffer = NULL;
+            }
+
+            return;
+        }
+    }
+}
+
+static const struct wl_buffer_listener stream_local_buffer_listener = {
+    stream_local_buffer_release_callback,
+};
+
+static EGLint
+acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
+{
+    WlEglPlatformData  *data        = display->data;
+    EGLDisplay          dpy         = display->devDpy->eglDisplay;
+    EGLImageKHR         eglImage;
+    WlEglStreamImage   *image = NULL;
+    struct zwp_linux_dmabuf_v1 *wrapper = NULL;
+    struct zwp_linux_buffer_params_v1 *params;
+    EGLuint64KHR        modifier;
+    int                 format;
+    int                 planes;
+    EGLint              stride;
+    EGLint              offset;
+    uint32_t            i;
+    int                 fd;
+
+    if (!data->egl.streamAcquireImage(dpy,
+                                      surface->ctx.eglStream,
+                                      &eglImage,
+                                      EGL_NO_SYNC_KHR)) {
+        return EGL_BAD_SURFACE;
+    }
+
+    for (i = 0; i < surface->ctx.numStreamImages; i++) {
+        if (surface->ctx.streamImages[i]->eglImage == eglImage) {
+            image = surface->ctx.streamImages[i];
+            break;
+        }
+    }
+
+    if (!image) {
+        return EGL_BAD_SURFACE;
+    }
+
+    if (!image->buffer) {
+        if (!data->egl.exportDMABUFImageQuery(dpy,
+                                              eglImage,
+                                              &format,
+                                              &planes,
+                                              &modifier)) {
+            goto fail_release;
+        }
+
+        assert(planes == 1); /* XXX support planar formats */
+
+        if (!data->egl.exportDMABUFImage(dpy,
+                                         eglImage,
+                                         &fd,
+                                         &stride,
+                                         &offset)) {
+            goto fail_release;
+        }
+
+        wrapper = wl_proxy_create_wrapper(display->wlDmaBuf);
+        wl_proxy_set_queue((struct wl_proxy *)wrapper, surface->wlEventQueue);
+
+        params = zwp_linux_dmabuf_v1_create_params(wrapper);
+
+        zwp_linux_buffer_params_v1_add(params,
+                                       fd,
+                                       0, /* XXX support planar formats */
+                                       offset,
+                                       stride,
+                                       modifier >> 32,
+                                       modifier & 0xffffffff);
+
+        image->buffer = zwp_linux_buffer_params_v1_create_immed(params,
+                                                                surface->width,
+                                                                surface->height,
+                                                                format, 0);
+
+        zwp_linux_buffer_params_v1_destroy(params);
+        wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
+        close(fd);
+
+        if (!image->buffer) {
+            goto fail_release;
+        }
+
+        if (wl_buffer_add_listener(image->buffer,
+                                   &stream_local_buffer_listener,
+                                   surface) == -1) {
+            wl_buffer_destroy(image->buffer);
+            image->buffer = NULL;
+            goto fail_release;
+        }
+    }
+
+    /* Add image to the end of the acquired images list */
+    wl_list_insert(surface->ctx.acquiredImages.prev, &image->acquiredLink);
+
+    return EGL_SUCCESS;
+
+fail_release:
+    /* Release the image back to the stream */
+    data->egl.streamReleaseImage(dpy,
+                                 surface->ctx.eglStream,
+                                 eglImage,
+                                 EGL_NO_SYNC_KHR);
+    return EGL_BAD_SURFACE;
+}
+
+static void
+remove_surface_image(WlEglDisplay *display,
+                     WlEglSurface *surface,
+                     EGLImageKHR eglImage)
+{
+    WlEglPlatformData   *data     = display->data;
+    EGLDisplay           dpy      = display->devDpy->eglDisplay;
+    WlEglStreamImage    *image;
+    uint32_t             i;
+
+    for (i = 0; i < surface->ctx.numStreamImages; i++) {
+        image = surface->ctx.streamImages[i];
+        if (image->eglImage == eglImage) {
+            data->egl.destroyImage(dpy, eglImage);
+            image->eglImage = EGL_NO_IMAGE_KHR;
+
+            if (surface->ctx.currentBuffer == image->buffer) {
+                surface->ctx.currentBuffer = NULL;
+            }
+
+            if (image->buffer && !image->attached) {
+                wl_buffer_destroy(image->buffer);
+                image->buffer = NULL;
+            }
+
+            if (!wl_list_empty(&image->acquiredLink)) {
+                wl_list_remove(&image->acquiredLink);
+                wl_list_init(&image->acquiredLink);
+            }
+
+            break;
+        }
+    }
+}
+
+static WlEglStreamImage *
+pop_acquired_image(WlEglSurface *surface)
+{
+    WlEglStreamImage *image;
+
+    wl_list_for_each(image, &surface->ctx.acquiredImages, acquiredLink) {
+        /* Safe only because the iteration is aborted by returning */
+        wl_list_remove(&image->acquiredLink);
+        wl_list_init(&image->acquiredLink);
+        return image;
+    }
+
+    /* List is empty. Return NULL. */
+    return NULL;
+}
+
+static EGLint
+add_surface_image(WlEglDisplay *display, WlEglSurface *surface)
+{
+    WlEglPlatformData   *data     = display->data;
+    EGLDisplay           dpy      = display->devDpy->eglDisplay;
+    WlEglStreamImage   **newImages;
+    WlEglStreamImage    *image;
+    uint32_t             i;
+
+    for (i = 0; i < surface->ctx.numStreamImages; i++) {
+        image = surface->ctx.streamImages[i];
+        if ((image->eglImage == EGL_NO_IMAGE_KHR) && !image->buffer) {
+            image->eglImage =
+                data->egl.createImage(dpy,
+                                      EGL_NO_CONTEXT,
+                                      EGL_STREAM_CONSUMER_IMAGE_NV,
+                                      (EGLClientBuffer)surface->ctx.eglStream,
+                                      NULL);
+
+            if (image->eglImage != EGL_NO_IMAGE_KHR) {
+                return EGL_SUCCESS;
+            } else {
+                return EGL_BAD_ALLOC;
+            }
+        }
+    }
+
+    newImages = realloc(surface->ctx.streamImages,
+                        sizeof(newImages[0]) *
+                        (surface->ctx.numStreamImages + 1));
+
+    if (!newImages) {
+        return EGL_BAD_ALLOC;
+    }
+
+    surface->ctx.streamImages = newImages;
+
+    newImages[i] = calloc(1, sizeof(*newImages[i]));
+
+    if (!surface->ctx.streamImages[i]) {
+        goto free_image;
+    }
+
+    /*
+     * Because numStreamImages is not incremented until initialization is
+     * complete, the image must be freed if initialization fails beyond this
+     * point to avoid leaks.
+     */
+    wl_list_init(&newImages[i]->acquiredLink);
+    newImages[i]->eglImage =
+        data->egl.createImage(dpy,
+                              EGL_NO_CONTEXT,
+                              EGL_STREAM_CONSUMER_IMAGE_NV,
+                              (EGLClientBuffer)surface->ctx.eglStream,
+                              NULL);
+
+    if (newImages[i]->eglImage == EGL_NO_IMAGE_KHR) {
+        goto free_image;
+    }
+
+    surface->ctx.numStreamImages++;
+
+    return EGL_SUCCESS;
+
+free_image:
+    free(newImages[i]);
+    newImages[i] = NULL;
+
+    return EGL_BAD_ALLOC;
+}
+
+EGLint wlEglHandleImageStreamEvents(WlEglSurface *surface)
+{
+    WlEglDisplay         *display = surface->wlEglDpy;
+    EGLDisplay            dpy     = display->devDpy->eglDisplay;
+    WlEglPlatformData    *data    = display->data;
+    EGLAttrib             aux;
+    EGLenum               event;
+    EGLint                err = EGL_SUCCESS;
+
+    if (surface->ctx.wlStreamResource) {
+        /* Not a local stream */
+        return err;
+    }
+
+    while (1) {
+        err = data->egl.queryStreamConsumerEvent(dpy,
+                                                 surface->ctx.eglStream,
+                                                 0,
+                                                 &event,
+                                                 &aux);
+
+        if (err == EGL_TRUE) {
+            err = EGL_SUCCESS;
+        } else if (err == EGL_TIMEOUT_EXPIRED) {
+            err = EGL_SUCCESS;
+            break;
+        } else if (err == EGL_FALSE) {
+            /* XXX Pick the right error code */
+            err = EGL_BAD_SURFACE;
+            break;
+        } else {
+            break;
+        }
+
+        switch (event) {
+        case EGL_STREAM_IMAGE_AVAILABLE_NV:
+            err = acquire_surface_image(display, surface);
+            break;
+        case EGL_STREAM_IMAGE_ADD_NV:
+            err = add_surface_image(display, surface);
+            break;
+
+        case EGL_STREAM_IMAGE_REMOVE_NV:
+            remove_surface_image(display, surface, (EGLImageKHR)aux);
+            break;
+
+        default:
+            assert(!"Unhandled EGLImage stream consumer event");
+        }
+    }
+
+    return err;
+}
+
 static EGLint create_surface_stream_local(WlEglSurface *surface)
 {
     WlEglDisplay         *display = surface->wlEglDpy;
@@ -752,6 +1106,8 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
         err = data->egl.getError();
         goto fail;
     }
+
+    wl_list_init(&surface->ctx.acquiredImages);
 
     return EGL_SUCCESS;
 
@@ -992,10 +1348,12 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
     wl_list_insert(&display->wlEglSurfaceList, &surface->link);
     wl_list_init(&surface->oldCtxList);
 
-    /* Set client's pendingSwapIntervalUpdate for updating client's
-     * swapinterval
-     */
-    surface->pendingSwapIntervalUpdate = EGL_TRUE;
+    if (surface->ctx.wlStreamResource) {
+        /* Set client's pendingSwapIntervalUpdate for updating client's
+         * swapinterval
+         */
+        surface->pendingSwapIntervalUpdate = EGL_TRUE;
+    }
 
     pthread_mutex_unlock(&display->mutex);
     wlEglReleaseDisplay(display);
@@ -1047,10 +1405,12 @@ resize_callback(struct wl_egl_window *window, void *data)
                                    surface,
                                    pData->egl.getCurrentContext());
 
-            /* Set client's pendingSwapIntervalUpdate for updating client's
-             * swapinterval
-             */
-            surface->pendingSwapIntervalUpdate = EGL_TRUE;
+            if (surface->ctx.wlStreamResource) {
+                /* Set client's pendingSwapIntervalUpdate for updating client's
+                 * swapinterval
+                 */
+                surface->pendingSwapIntervalUpdate = EGL_TRUE;
+            }
         }
     }
     pthread_mutex_unlock(&surface->mutexLock);
@@ -1356,10 +1716,12 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
 
     surface->swapInterval = 1; // Default swap interval is 1
 
-    /* Set client's pendingSwapIntervalUpdate for updating client's
-     * swapinterval
-     */
-    surface->pendingSwapIntervalUpdate = EGL_TRUE;
+    if (surface->ctx.wlStreamResource) {
+        /* Set client's pendingSwapIntervalUpdate for updating client's
+         * swapinterval
+         */
+        surface->pendingSwapIntervalUpdate = EGL_TRUE;
+    }
     window->driver_private = surface;
     window->resize_callback = resize_callback;
     if (surface->wlEglWinVer >= WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE) {

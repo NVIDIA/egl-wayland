@@ -110,6 +110,13 @@ typedef struct WlEglPlatformDataRec {
 
         /* Used for dma-buf surfaces */
         PFNEGLSTREAMIMAGECONSUMERCONNECTNVPROC      streamImageConsumerConnect;
+        PFNEGLSTREAMACQUIREIMAGENVPROC              streamAcquireImage;
+        PFNEGLSTREAMRELEASEIMAGENVPROC              streamReleaseImage;
+        PFNEGLQUERYSTREAMCONSUMEREVENTNVPROC        queryStreamConsumerEvent;
+        PFNEGLEXPORTDMABUFIMAGEMESAPROC             exportDMABUFImage;
+        PFNEGLEXPORTDMABUFIMAGEQUERYMESAPROC        exportDMABUFImageQuery;
+        PFNEGLCREATEIMAGEKHRPROC                    createImage;
+        PFNEGLDESTROYIMAGEKHRPROC                   destroyImage;
     } egl;
 
     /* Non-application-facing callbacks provided by the EGL driver */

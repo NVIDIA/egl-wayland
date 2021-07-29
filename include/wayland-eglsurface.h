@@ -34,6 +34,13 @@
 extern "C" {
 #endif
 
+typedef struct WlEglStreamImageRec {
+    EGLImageKHR             eglImage;
+    struct wl_buffer       *buffer;
+    EGLBoolean              attached;
+    struct wl_list          acquiredLink;
+} WlEglStreamImage;
+
 typedef struct WlEglSurfaceCtxRec {
     EGLBoolean              isOffscreen;
     EGLSurface              eglSurface;
@@ -49,6 +56,16 @@ typedef struct WlEglSurfaceCtxRec {
     EGLuint64KHR framesProduced;
     EGLuint64KHR framesFinished;
     EGLuint64KHR framesProcessed;
+
+    /*
+     * The double pointer is because of the need to allocate the data for each
+     * image slot separately to avoid clobbering the acquiredLink member
+     * whenever the streamImages arrary is resized with realloc().
+     */
+    WlEglStreamImage      **streamImages;
+    struct wl_list          acquiredImages;
+    struct wl_buffer       *currentBuffer;
+    uint32_t                numStreamImages;
 
     struct wl_list link;
 } WlEglSurfaceCtx;
@@ -132,6 +149,8 @@ EGLint wlEglWaitFrameSync(WlEglSurface *surface);
 
 EGLBoolean wlEglSurfaceRef(WlEglDisplay *display, WlEglSurface *surface);
 void wlEglSurfaceUnref(WlEglSurface *surface);
+
+EGLint wlEglHandleImageStreamEvents(WlEglSurface *surface);
 
 #ifdef __cplusplus
 }

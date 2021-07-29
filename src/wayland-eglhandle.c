@@ -114,6 +114,13 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
 
     /* EGLImage Stream consumer and dependencies */
     GET_PROC(streamImageConsumerConnect,  eglStreamImageConsumerConnectNV);
+    GET_PROC(streamAcquireImage,          eglStreamAcquireImageNV);
+    GET_PROC(streamReleaseImage,          eglStreamReleaseImageNV);
+    GET_PROC(queryStreamConsumerEvent,    eglQueryStreamConsumerEventNV);
+    GET_PROC(exportDMABUFImage,           eglExportDMABUFImageMESA);
+    GET_PROC(exportDMABUFImageQuery,      eglExportDMABUFImageQueryMESA);
+    GET_PROC(createImage,                 eglCreateImageKHR);
+    GET_PROC(destroyImage,                eglDestroyImageKHR);
 
 #undef GET_PROC
 
