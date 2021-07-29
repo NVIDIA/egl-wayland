@@ -583,6 +583,10 @@ create_wl_eglstream(WlEglSurface *surface,
     int32_t                      width;
     int32_t                      height;
 
+    if (!display->wlStreamDpy) {
+        return NULL;
+    }
+
     if (surface->isSurfaceProducer) {
         assert(window);
         width  = window->width;
@@ -1326,7 +1330,6 @@ create_surface_stream(WlEglSurface *surface)
      */
 #ifdef EGL_NV_stream_consumer_eglimage
     if ((err != EGL_SUCCESS) &&
-        EGL_FALSE && /* Disabled until complete */
         display->devDpy->exts.stream_consumer_eglimage &&
         display->devDpy->exts.image_dma_buf_export &&
         display->wlDmaBuf) {

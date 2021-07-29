@@ -33,6 +33,11 @@
 #include <stdlib.h>
 #include <assert.h>
 
+typedef struct WlServerProtocolsRec {
+    EGLBoolean hasEglStream;
+    EGLBoolean hasDmaBuf;
+} WlServerProtocols;
+
 /* TODO: Make global display lists hang off platform data */
 static struct wl_list wlEglDisplayList = WL_LIST_INITIALIZER(&wlEglDisplayList);
 
@@ -237,21 +242,25 @@ static const struct wl_registry_listener registry_listener = {
 };
 
 static void
-registry_handle_global_check_eglstream(
+registry_handle_global_check_protocols(
                        void *data,
                        struct wl_registry *registry,
                        uint32_t name,
                        const char *interface,
                        uint32_t version)
 {
-    EGLBoolean *hasEglStream = (EGLBoolean *)data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) registry;
     (void) name;
-    (void) interface;
     (void) version;
 
     if (strcmp(interface, "wl_eglstream_display") == 0) {
-        *hasEglStream = EGL_TRUE;
+        protocols->hasEglStream = EGL_TRUE;
+    }
+
+    if ((strcmp(interface, "zwp_linux_dmabuf_v1") == 0) &&
+        (version >= 3)) {
+        protocols->hasDmaBuf = EGL_TRUE;
     }
 }
 
@@ -380,20 +389,20 @@ EGLBoolean wlEglTerminateHook(EGLDisplay dpy)
     return res;
 }
 
-static EGLBoolean serverSupportsEglStream(struct wl_display *nativeDpy)
+static void checkServerProtocols(struct wl_display *nativeDpy,
+                                 WlServerProtocols *protocols)
 {
     struct wl_display     *wrapper      = NULL;
     struct wl_registry    *wlRegistry   = NULL;
     struct wl_event_queue *queue        = wl_display_create_queue(nativeDpy);
     int                    ret          = 0;
-    EGLBoolean             hasEglStream = EGL_FALSE;
     const struct wl_registry_listener registryListener = {
-        registry_handle_global_check_eglstream,
+        registry_handle_global_check_protocols,
         registry_handle_global_remove
     };
 
     if (queue == NULL) {
-        return EGL_FALSE;
+        return;
     }
 
     wrapper = wl_proxy_create_wrapper(nativeDpy);
@@ -406,7 +415,7 @@ static EGLBoolean serverSupportsEglStream(struct wl_display *nativeDpy)
     wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
     ret = wl_registry_add_listener(wlRegistry,
                                    &registryListener,
-                                   &hasEglStream);
+                                   protocols);
     if (ret == 0) {
         wl_display_roundtrip_queue(nativeDpy, queue);
     }
@@ -417,8 +426,6 @@ static EGLBoolean serverSupportsEglStream(struct wl_display *nativeDpy)
     if (wlRegistry) {
        wl_registry_destroy(wlRegistry);
     }
-
-    return hasEglStream;
 }
 
 EGLDisplay wlEglGetPlatformDisplayExport(void *data,
@@ -428,6 +435,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 {
     WlEglPlatformData     *pData           = (WlEglPlatformData *)data;
     WlEglDisplay          *display         = NULL;
+    WlServerProtocols      protocols;
     EGLint                 numDevices      = 0;
     int                    i               = 0;
     EGLDeviceEXT           eglDevice       = NULL;
@@ -499,7 +507,10 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         wl_display_dispatch_pending(display->nativeDpy);
     }
 
-    if (!serverSupportsEglStream(display->nativeDpy)) {
+    memset(&protocols, 0, sizeof(protocols));
+    checkServerProtocols(display->nativeDpy, &protocols);
+
+    if (!protocols.hasEglStream && !protocols.hasDmaBuf) {
         wlExternalApiUnlock();
         goto fail;
     }
@@ -594,7 +605,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     wl_proxy_set_queue((struct wl_proxy *)wrapper, display->wlEventQueue);
 
     /* Listen to wl_registry events and make a roundtrip in order to find the
-     * wl_eglstream_display global object
+     * wl_eglstream_display and/or zwp_linux_dmabuf_v1 global object
      */
     display->wlRegistry = wl_display_get_registry(wrapper);
     wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
@@ -604,21 +615,30 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     if (ret == 0) {
         ret = wl_display_roundtrip_queue(display->nativeDpy, display->wlEventQueue);
     }
-    if (ret < 0 || !display->wlStreamDpy) {
+    if (ret < 0) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
 
-    /* Listen to wl_eglstream_display events and make another roundtrip so we
-     * catch any bind-related event (e.g. server capabilities)
-     */
-    ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
-                                            &eglstream_display_listener,
-                                            display);
-    if (ret == 0) {
-        ret = wl_display_roundtrip_queue(display->nativeDpy, display->wlEventQueue);
-    }
-    if (ret < 0) {
+    if (display->wlStreamDpy) {
+        /* Listen to wl_eglstream_display events and make another roundtrip so we
+         * catch any bind-related event (e.g. server capabilities)
+         */
+        ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
+                                                &eglstream_display_listener,
+                                                display);
+        if (ret == 0) {
+            ret = wl_display_roundtrip_queue(display->nativeDpy,
+                                             display->wlEventQueue);
+        }
+        if (ret < 0) {
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
+    } else if (!display->wlDmaBuf) {
+        /* This library requires either the EGLStream or dma-buf protocols to
+         * present content to the Wayland compositor.
+         */
         err = EGL_BAD_ALLOC;
         goto fail;
     }

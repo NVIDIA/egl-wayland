@@ -193,8 +193,8 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
 
     pthread_mutex_lock(&display->mutex);
 
-    /* Check this is a valid wayland EGL surface (and stream) before sending the
-     * swap interval value to the consumer */
+    /* Check this is a valid wayland EGL surface with a server-side stream
+     * resource before sending the swap interval value to the consumer */
     if (display->initCount == 0 ||
         !wlEglIsWlEglSurfaceForDisplay(display, surface) ||
         (surface->swapInterval == interval) ||
