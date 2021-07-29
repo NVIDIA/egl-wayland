@@ -780,7 +780,8 @@ create_surface_stream(WlEglSurface *surface)
     if ((err != EGL_SUCCESS) &&
         EGL_FALSE && /* Disabled until complete */
         display->devDpy->exts.stream_consumer_eglimage &&
-        display->devDpy->exts.image_dma_buf_export) {
+        display->devDpy->exts.image_dma_buf_export &&
+        display->wlDmaBuf) {
         err = create_surface_stream_local(surface);
     }
 #endif

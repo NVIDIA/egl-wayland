@@ -23,6 +23,7 @@
 #include "wayland-egldisplay.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
+#include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
 #include "wayland-eglsurface.h"
@@ -93,6 +94,109 @@ EGLBoolean wlEglUnbindDisplaysHook(EGLDisplay dpy, void *nativeDpy)
 }
 
 static void
+dmabuf_handle_format(void *data,
+                     struct zwp_linux_dmabuf_v1 *dmabuf,
+                     uint32_t format)
+{
+    (void)data;
+    (void)dmabuf;
+    (void)format;
+    /* Only use formats that include an associated modifier */
+}
+
+static void
+dmabuf_add_format_modifier(WlEglDmaBufFormat *format, const uint64_t modifier)
+{
+    uint64_t *newModifiers;
+    uint32_t m;
+
+    for (m = 0; m < format->numModifiers; m++) {
+        if (format->modifiers[m] == modifier) {
+            return;
+        }
+    }
+
+    newModifiers = realloc(format->modifiers,
+                           sizeof(format->modifiers[0]) *
+                           (format->numModifiers + 1));
+
+    if (!newModifiers) {
+        return;
+    }
+
+    newModifiers[format->numModifiers] = modifier;
+
+    format->modifiers = newModifiers;
+    format->numModifiers++;
+}
+
+static void
+dmabuf_handle_modifier(void *data,
+                       struct zwp_linux_dmabuf_v1 *dmabuf,
+                       uint32_t format,
+                       uint32_t mod_hi,
+                       uint32_t mod_lo)
+{
+    WlEglDisplay *display = data;
+    WlEglDmaBufFormat *newFormats;
+    const uint64_t modifier = ((uint64_t)mod_hi << 32ULL) | (uint64_t)mod_lo;
+    uint32_t f;
+
+    (void)dmabuf;
+
+    for (f = 0; f < display->numFormats; f++) {
+        if (display->dmaBufFormats[f].format == format) {
+            dmabuf_add_format_modifier(&display->dmaBufFormats[f], modifier);
+            return;
+        }
+    }
+
+    newFormats = realloc(display->dmaBufFormats,
+                         sizeof(display->dmaBufFormats[0]) *
+                         (display->numFormats + 1));
+
+    if (!newFormats) {
+        return;
+    }
+
+    newFormats[display->numFormats].format = format;
+    newFormats[display->numFormats].numModifiers = 0;
+    newFormats[display->numFormats].modifiers = NULL;
+    dmabuf_add_format_modifier(&newFormats[display->numFormats], modifier);
+
+    display->dmaBufFormats = newFormats;
+    display->numFormats++;
+}
+
+static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
+    .format = dmabuf_handle_format,
+    .modifier = dmabuf_handle_modifier,
+};
+
+static void
+dmabuf_set_interface(WlEglDisplay *display,
+                     struct wl_registry *registry,
+                     uint32_t name,
+                     uint32_t version)
+{
+    if (version < 3) {
+        /*
+         * Version 3 added format modifier support, which the dmabuf
+         * support in this library relies on.
+         */
+        return;
+    }
+
+    display->wlDmaBuf = wl_registry_bind(registry,
+                                         name,
+                                         &zwp_linux_dmabuf_v1_interface,
+                                         3);
+    zwp_linux_dmabuf_v1_add_listener(display->wlDmaBuf,
+                                     &dmabuf_listener,
+                                     display);
+}
+
+static void
 registry_handle_global(void *data,
                        struct wl_registry *registry,
                        uint32_t name,
@@ -106,13 +210,14 @@ registry_handle_global(void *data,
                                                 name,
                                                 &wl_eglstream_display_interface,
                                                 version);
-    }
-    if (strcmp(interface, "wl_eglstream_controller") == 0) {
+    } else if (strcmp(interface, "wl_eglstream_controller") == 0) {
         display->wlStreamCtl = wl_registry_bind(registry,
                                                 name,
                                                 &wl_eglstream_controller_interface,
                                                 version);
         display->wlStreamCtlVer = version;
+    } else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
+        dmabuf_set_interface(display, registry, name, version);
     }
 }
 

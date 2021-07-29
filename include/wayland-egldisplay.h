@@ -39,6 +39,12 @@ extern "C" {
    when the attach_eglstream_consumer_attrib() request was first available" */
 #define WL_EGLSTREAM_CONTROLLER_ATTACH_EGLSTREAM_CONSUMER_ATTRIB_SINCE 2
 
+typedef struct WlEglDmaBufFormatRec {
+    uint32_t format;
+    uint32_t numModifiers;
+    uint64_t *modifiers;
+} WlEglDmaBufFormat;
+
 typedef struct WlEglDisplayRec {
     WlEglDeviceDpy *devDpy;
 
@@ -48,6 +54,7 @@ typedef struct WlEglDisplayRec {
     struct wl_registry             *wlRegistry;
     struct wl_eglstream_display    *wlStreamDpy;
     struct wl_eglstream_controller *wlStreamCtl;
+    struct zwp_linux_dmabuf_v1     *wlDmaBuf;
     unsigned int                    wlStreamCtlVer;
     struct wl_event_queue          *wlEventQueue;
     struct {
@@ -81,6 +88,9 @@ typedef struct WlEglDisplayRec {
     struct wl_list wlEglSurfaceList;
 
     struct wl_list link;
+
+    WlEglDmaBufFormat *dmaBufFormats;
+    uint32_t numFormats;
 } WlEglDisplay;
 
 typedef struct WlEventQueueRec {

@@ -8,6 +8,26 @@ if cc.has_argument('-Wpedantic')
         add_project_arguments('-Wno-pedantic', language : 'c')
 endif
 
+wl_protos = dependency('wayland-protocols', version: '>= 1.8')
+wl_protos_dir = wl_protos.get_pkgconfig_variable('pkgdatadir')
+wl_dmabuf_xml = join_paths(wl_protos_dir, 'unstable', 'linux-dmabuf', 'linux-dmabuf-unstable-v1.xml')
+
+client_header = generator(prog_scanner,
+    output : '@BASENAME@-client-protocol.h',
+    arguments : ['client-header', '@INPUT@', '@OUTPUT@']
+)
+
+if wl_scanner.version().version_compare('>= 1.14.91')
+    code_arg = 'private-code'
+else
+    code_arg = 'code'
+endif
+
+code = generator(prog_scanner,
+    output : '@BASENAME@-protocol.c',
+    arguments : [code_arg, '@INPUT@', '@OUTPUT@']
+)
+
 src = [
     'wayland-thread.c',
     'wayland-egldevice.c',
@@ -26,6 +46,9 @@ src = [
     wayland_eglstream_controller_protocol_c,
     wayland_eglstream_controller_client_protocol_h,
 ]
+
+src += client_header.process(wl_dmabuf_xml)
+src += code.process(wl_dmabuf_xml)
 
 egl_wayland = library('nvidia-egl-wayland',
     src,
