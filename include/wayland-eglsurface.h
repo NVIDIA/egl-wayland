@@ -35,6 +35,17 @@ extern "C" {
 #endif
 
 typedef struct WlEglStreamImageRec {
+    /* Pointer back to the parent surface for use in Wayland callbacks */
+    struct WlEglSurfaceRec *surface;
+
+    /*
+     * Use an individual mutex to guard access to each image's data. This avoids
+     * sharing the surface lock between the app and buffer release event
+     * threads, resulting in simplified lock management and smaller critical
+     * sections.
+     */
+    pthread_mutex_t         mutex;
+
     EGLImageKHR             eglImage;
     struct wl_buffer       *buffer;
     EGLBoolean              attached;
@@ -90,6 +101,13 @@ typedef struct WlEglSurfaceRec {
 
     struct wl_callback    *throttleCallback;
     struct wl_event_queue *wlEventQueue;
+
+    /* Asynchronous wl_buffer.release event processing */
+    struct {
+        struct wl_event_queue  *wlBufferEventQueue;
+        pthread_t               bufferReleaseThreadId;
+        int                     bufferReleaseThreadPipe[2];
+    };
 
     struct wl_list link;
 
