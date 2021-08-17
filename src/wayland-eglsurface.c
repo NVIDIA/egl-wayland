@@ -69,7 +69,7 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
             return EGL_FALSE;
         }
     }
-    return WL_CHECK_INTERFACE_TYPE(surface, wl_surface_interface);
+    return WL_CHECK_INTERFACE_TYPE(surface, wl_surface_interface, "wl_surface");
 #else
     /*
      * Note that dereferencing an invalid surface pointer could mean an old

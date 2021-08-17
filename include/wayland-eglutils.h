@@ -60,9 +60,9 @@ EGLBoolean wlEglFindExtension(const char *extension, const char *extensions);
 EGLBoolean wlEglPointerIsDereferencable(void *p);
 EGLBoolean wlEglCheckInterfaceType(struct wl_object *obj, const char *ifname);
 #ifndef WL_CHECK_INTERFACE_TYPE
-#define WL_CHECK_INTERFACE_TYPE(obj, ifname)                            \
-    (wlEglCheckInterfaceType((struct wl_object *)(obj), #ifname) ||     \
-     *(void **)(obj) == &ifname)
+#define WL_CHECK_INTERFACE_TYPE(obj, iftype, ifname)             \
+    (*(void **)(obj) == &iftype ||                               \
+    wlEglCheckInterfaceType((struct wl_object *)(obj), ifname))
 #endif
 #endif
 void wlEglSetErrorCallback(WlEglPlatformData *data,

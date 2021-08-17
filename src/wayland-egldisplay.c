@@ -42,7 +42,7 @@ EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
         return EGL_FALSE;
     }
 
-    return WL_CHECK_INTERFACE_TYPE(nativeDpy, wl_display_interface);
+    return WL_CHECK_INTERFACE_TYPE(nativeDpy, wl_display_interface, "wl_display");
 #else
     (void)nativeDpy;
 
