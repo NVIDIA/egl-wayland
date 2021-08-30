@@ -812,14 +812,30 @@ const char* wlEglQueryStringExport(void *data,
              *  - EGL_KHR_stream
              *  - EGL_KHR_stream_producer_eglsurface
              *  - EGL_KHR_stream_cross_process_fd
+             *
+             * For Wayland support via dma-buf, at least the following
+             * extensions must be supported by the underlying driver:
+             *
+             *  - EGL_KHR_stream
+             *  - EGL_KHR_stream_producer_eglsurface
+             *  - EGL_NV_stream_consumer_eglimage
+             *  - EGL_MESA_image_dma_buf_export
              */
             const char *exts = pData->egl.queryString(dpy, EGL_EXTENSIONS);
 
             if (wlEglFindExtension("EGL_KHR_stream", exts) &&
-                wlEglFindExtension("EGL_KHR_stream_producer_eglsurface", exts) &&
-                wlEglFindExtension("EGL_KHR_stream_cross_process_fd", exts)) {
-                res = "EGL_WL_bind_wayland_display "
-                     "EGL_WL_wayland_eglstream";
+                wlEglFindExtension("EGL_KHR_stream_producer_eglsurface",
+                                   exts)) {
+                if (wlEglFindExtension("EGL_KHR_stream_cross_process_fd",
+                                       exts)) {
+                    res = "EGL_WL_bind_wayland_display "
+                        "EGL_WL_wayland_eglstream";
+                } else if (wlEglFindExtension("EGL_NV_stream_consumer_eglimage",
+                                              exts) &&
+                           wlEglFindExtension("EGL_MESA_image_dma_buf_export",
+                                              exts)) {
+                    res = "EGL_WL_bind_wayland_display";
+                }
             }
         }
         break;
