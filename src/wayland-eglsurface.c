@@ -57,31 +57,19 @@ EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window)
 {
     struct wl_surface *surface = NULL;
 
-#if HAS_MINCORE
-    if (!window || !wlEglPointerIsDereferencable(window)) {
+    if (!window || !wlEglMemoryIsReadable(window, sizeof (*window))) {
         return EGL_FALSE;
     }
 
     surface = (struct wl_surface *)window->version;
-    if (!wlEglPointerIsDereferencable(surface)) {
+    if (!wlEglMemoryIsReadable(surface, sizeof (void *))) {
         surface = window->surface;
-        if (!wlEglPointerIsDereferencable(surface)) {
+        if (!wlEglMemoryIsReadable(surface, sizeof (void *))) {
             return EGL_FALSE;
         }
     }
-    return WL_CHECK_INTERFACE_TYPE(surface, wl_surface_interface);
-#else
-    /*
-     * Note that dereferencing an invalid surface pointer could mean an old
-     * version of libwayland-egl.so is loaded, which may not support version
-     * member in wl_egl_window struct.
-     */
-    surface = window->surface;
-
-    /* wl_surface is a wl_proxy, which is a wl_object. wl_objects's first
-     * element points to the interface type */
-    return (((*(void **)surface)) == &wl_surface_interface);
-#endif
+    return wlEglCheckInterfaceType((struct wl_object *)surface,
+                                   "wl_surface");
 }
 
 static void
@@ -1206,20 +1194,16 @@ getWlEglWindowVersionAndSurface(struct wl_egl_window *window,
      * 'window->version' replaced 'window->surface', we must check whether
      * 'window->version' is actually a valid pointer. If it is, we are dealing
      * with a wl_egl_window from an old implementation of libwayland-egl.so
-     * Note that this will be disabled if platfrom does not have
-     * mincore(2) to check whether a pointer is valid or not.
      */
 
-     *version = window->version;
-     *surface = window->surface;
+    *version = window->version;
+    *surface = window->surface;
 
-#if HAS_MINCORE
-    if (wlEglPointerIsDereferencable((void *)(window->version))) {
+    if (wlEglMemoryIsReadable((void *)window->version,
+                              sizeof (void *))) {
         *version = 0;
         *surface = (struct wl_surface *)(window->version);
     }
-#endif
-
 }
 
 EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,

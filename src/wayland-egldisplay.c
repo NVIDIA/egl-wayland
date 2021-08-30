@@ -37,27 +37,15 @@ static struct wl_list wlEglDisplayList = WL_LIST_INITIALIZER(&wlEglDisplayList);
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 {
-#if HAS_MINCORE
-    if (!wlEglPointerIsDereferencable(nativeDpy)) {
+    if (!wlEglMemoryIsReadable(nativeDpy, sizeof (void *))) {
         return EGL_FALSE;
     }
 
-    return WL_CHECK_INTERFACE_TYPE(nativeDpy, wl_display_interface);
-#else
-    (void)nativeDpy;
-
-    /* we return EGL_TRUE in order to always assume a valid wayland
-     * display is given so that we bypass all the checks that would
-     * prevent any of the functions in this library to work
-     * otherwise.
-     */
-    return EGL_TRUE;
-#endif
+    return wlEglCheckInterfaceType(nativeDpy, "wl_display");
 }
 
 EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
 {
-    EGLBoolean  checkDpy = EGL_TRUE;
     char       *val      = getenv("EGL_PLATFORM");
     (void)data;
 
@@ -65,17 +53,7 @@ EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
         return EGL_TRUE;
     }
 
-#if !HAS_MINCORE
-    /* wlEglIsWaylandDisplay always returns true if  mincore(2)
-     * is not available, hence we cannot ascertain whether the
-     * the nativeDpy is wayland.
-     * Note: this effectively forces applications to use
-     * eglGetPlatformDisplay() instead of eglGetDisplay().
-     */
-    checkDpy = EGL_FALSE;
-#endif
-
-    return (checkDpy ? wlEglIsWaylandDisplay(nativeDpy) : EGL_FALSE);
+    return wlEglIsWaylandDisplay(nativeDpy);
 }
 
 EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy)

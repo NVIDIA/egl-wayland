@@ -31,10 +31,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdio.h>
-
-#if HAS_MINCORE
-#include <dlfcn.h> // Need dlsym() to load mincore() symbol dynamically.
-#endif
+#include <fcntl.h>
+#include <errno.h>
+#include <assert.h>
 
 EGLBoolean wlEglFindExtension(const char *extension, const char *extensions)
 {
@@ -59,86 +58,44 @@ EGLBoolean wlEglFindExtension(const char *extension, const char *extensions)
     return EGL_FALSE;
 }
 
-#if HAS_MINCORE
-EGLBoolean wlEglPointerIsDereferencable(void *p)
+EGLBoolean wlEglMemoryIsReadable(const void *p, size_t len)
 {
-    /*
-     * BSD and Solaris have slightly different prototypes for mincore, but
-     * they should be compatible with this.  BSD uses:
-     *
-     *   (const void *, size_t, char *)
-     *
-     * And Solaris uses:
-     *
-     *   (caddr_t, size_t, char*)
-     *
-     * Which I believe are all ABI compatible with the Linux prototype used
-     * below for MINCOREPROC.
-     */
-    typedef int (*MINCOREPROC)(void *, size_t, unsigned char *);
-    static MINCOREPROC pMinCore = NULL;
-    static EGLBoolean minCoreLoadAttempted = EGL_FALSE;
-    uintptr_t addr = (uintptr_t) p;
-    unsigned char unused;
-    const long page_size = getpagesize();
-
-    if (minCoreLoadAttempted == EGL_FALSE) {
-        minCoreLoadAttempted = EGL_TRUE;
-
-        /*
-         * According to its manpage, mincore was introduced in Linux 2.3.99pre1
-         * and glibc 2.2.  The minimum glibc our driver supports is 2.0, so this
-         * mincore can not be linked in directly.  It does however seem
-         * reasonable to assume that Wayland will not be run on glibc < 2.2.
-         *
-         * Attempt to load mincore from the currently available libraries.
-         * mincore comes from libc, which the EGL driver depends on, so it
-         * should always be loaded if our driver is running.
-         */
-        pMinCore = (MINCOREPROC)dlsym(NULL, "mincore");
-    }
-
-    /*
-     * If the pointer can't be tested for safety, or is obviously unsafe,
-     * assume it can't be dereferenced.
-     */
-    if (p == NULL || !pMinCore) {
+    int fds[2], result = -1;
+    if (pipe(fds) == -1) {
         return EGL_FALSE;
     }
 
-    /* align addr to page_size */
-    addr &= ~(page_size - 1);
+    if (fcntl(fds[1], F_SETFL, O_NONBLOCK) == -1) {
+        goto done;
+    }
 
-    /*
-     * mincore() returns 0 on success, and -1 on failure.  The last parameter
-     * is a vector of bytes with one entry for each page queried.  mincore
-     * returns page residency information in the first bit of each byte in the
-     * vector.
-     *
-     * Residency doesn't actually matter when determining whether a pointer is
-     * dereferenceable, so the output vector can be ignored.  What matters is
-     * whether mincore succeeds.  It will fail with ENOMEM if the range
-     * [addr, addr + length) is not mapped into the process, so all that needs
-     * to be checked there is whether the mincore call succeeds or not, as it
-     * can only succeed on dereferenceable memory ranges.
-     */
-    return (pMinCore((void *) addr, page_size, &unused) >= 0);
+    /* write will fail with EFAULT if the provided buffer is outside
+     * our accessible address space. */
+    result = write(fds[1], p, len);
+    assert(result != -1 || errno == EFAULT);
+
+done:
+    close(fds[0]);
+    close(fds[1]);
+    return result != -1;
 }
 
 EGLBoolean wlEglCheckInterfaceType(struct wl_object *obj, const char *ifname)
 {
+    /* The first member of a wl_object is a pointer to its wl_interface, */
+    struct wl_interface *interface = *(void **)obj;
 
-    Dl_info info;
-    /*
-     * The first member of a wl_object is a pointer to its wl_interface,
-     * so we can check if it corresponds to the given symbol name
-     */
-    if (dladdr(*(void **)obj, &info) == 0) {
+    /* Check if the memory for the wl_interface struct, and the
+     * interface name, are safe to read. */
+    int len = strlen(ifname);
+    if (!wlEglMemoryIsReadable(interface, sizeof (*interface)) ||
+        !wlEglMemoryIsReadable(interface->name, len + 1)) {
         return EGL_FALSE;
     }
-    return info.dli_sname && !strcmp(info.dli_sname, ifname);
+
+
+    return !strcmp(interface->name, ifname);
 }
-#endif
 
 void wlEglSetErrorCallback(WlEglPlatformData *data,
                            EGLint error,

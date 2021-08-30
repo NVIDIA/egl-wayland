@@ -22,7 +22,6 @@ libnvidia_egl_wayland_la_CFLAGS += \
 libnvidia_egl_wayland_la_LDFLAGS =                                                                                        \
     -shared                                                                                                               \
     -Wl,-Bsymbolic                                                                                                        \
-    -ldl                                                                                                                  \
     $(WAYLAND_LIBS)                                                                                                       \
     -version-number $(WAYLAND_EXTERNAL_MAJOR_VERSION):$(WAYLAND_EXTERNAL_MINOR_VERSION):$(WAYLAND_EXTERNAL_MICRO_VERSION) \
     $(LINKER_FLAG_NO_UNDEFINED)
