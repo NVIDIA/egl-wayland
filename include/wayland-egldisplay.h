@@ -58,23 +58,25 @@ typedef struct WlEglDisplayRec {
 
     WlEglPlatformData *data;
 
-    EGLBoolean useRefCount;
+    EGLBoolean useInitRefCount;
 
     /**
      * The number of times that eglTerminate has to be called before the
      * display is termianted.
      *
-     * If \c useRefCount is true, then this is incremented each time
+     * If \c useInitRefCount is true, then this is incremented each time
      * eglInitialize is called, and decremented each time eglTerminate is
      * called.
      *
-     * If \c useRefCount is false, then this value is capped at 1.
+     * If \c useInitRefCount is false, then this value is capped at 1.
      *
      * In all cases, the display is initialized if (initCount > 0).
      */
     unsigned int initCount;
 
     pthread_mutex_t mutex;
+
+    int refCount;
 
     struct wl_list wlEglSurfaceList;
 
@@ -100,6 +102,8 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                                          const EGLAttrib *attribs);
 EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor);
 EGLBoolean wlEglTerminateHook(EGLDisplay dpy);
+WlEglDisplay *wlEglAcquireDisplay(EGLDisplay dpy);
+void wlEglReleaseDisplay(WlEglDisplay *display);
 
 EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
                                  EGLint const * attribs,

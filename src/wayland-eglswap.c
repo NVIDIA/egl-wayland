@@ -37,28 +37,33 @@ EGLBoolean wlEglSwapBuffersHook(EGLDisplay eglDisplay, EGLSurface eglSurface)
 
 EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglSurface, EGLint *rects, EGLint n_rects)
 {
-    WlEglDisplay          *display     = (WlEglDisplay *)eglDisplay;
-    WlEglPlatformData     *data        = display->data;
+    WlEglDisplay          *display     = wlEglAcquireDisplay(eglDisplay);
+    WlEglPlatformData     *data        = NULL;
     WlEglSurface          *surface     = NULL;
     EGLStreamKHR           eglStream   = EGL_NO_STREAM_KHR;
     EGLBoolean             isOffscreen = EGL_FALSE;
     EGLBoolean             res;
     EGLint                 err;
 
+    if (!display) {
+        return EGL_FALSE;
+    }
+    pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
+
     if (display->initCount == 0) {
         err = EGL_NOT_INITIALIZED;
         goto fail;
     }
 
-    //wlEglSurfaceRef() requires we acquire display lock
-    pthread_mutex_lock(&display->mutex);
     if (!wlEglSurfaceRef(display, eglSurface)) {
-        pthread_mutex_unlock(&display->mutex);
         err = EGL_BAD_SURFACE;
         goto fail;
     }
 
     surface = eglSurface;
+
     if (surface->pendingSwapIntervalUpdate == EGL_TRUE) {
         /* Send request from client to override swapinterval value based on
          * server's swapinterval for overlay compositing
@@ -70,14 +75,12 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         if (wl_display_roundtrip_queue(display->nativeDpy,
                                        display->wlEventQueue) < 0) {
             err = EGL_BAD_ALLOC;
-            pthread_mutex_unlock(&display->mutex);
             goto fail;
         }
         surface->pendingSwapIntervalUpdate = EGL_FALSE;
     }
 
     pthread_mutex_unlock(&display->mutex);
-
 
     // Acquire wlEglSurface lock.
     pthread_mutex_lock(&surface->mutexLock);
@@ -131,37 +134,58 @@ done:
     // Release wlEglSurface lock.
     pthread_mutex_unlock(&surface->mutexLock);
 
-    //wlEglSurfaceUnRef() requires we acquire display lock
+    /* reacquire display lock */
     pthread_mutex_lock(&display->mutex);
     wlEglSurfaceUnref(surface);
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
+
     return res;
 
 fail_locked:
     pthread_mutex_unlock(&surface->mutexLock);
+    /* reacquire display lock */
+    pthread_mutex_lock(&display->mutex);
 fail:
     if (surface != NULL) {
-        //wlEglSurfaceUnRef() requires we acquire display lock
-        pthread_mutex_lock(&display->mutex);
         wlEglSurfaceUnref(surface);
-        pthread_mutex_unlock(&display->mutex);
     }
+    pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
+
     wlEglSetError(data, err);
     return EGL_FALSE;
 }
 
 EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
 {
-    WlEglDisplay      *display = (WlEglDisplay *)eglDisplay;
-    WlEglPlatformData *data    = display->data;
+    WlEglDisplay      *display = wlEglAcquireDisplay(eglDisplay);
+    WlEglPlatformData *data    = NULL;
     WlEglSurface      *surface = NULL;
+    EGLBoolean         ret     = EGL_TRUE;
     EGLint             state;
+
+    if (!display) {
+        return EGL_FALSE;
+    }
+    pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
+
+    if (display->initCount == 0) {
+        wlEglSetError(data, EGL_NOT_INITIALIZED);
+        ret = EGL_FALSE;
+        goto done;
+    }
 
     /* Save the internal EGLDisplay handle, as it's needed by the actual
      * eglSwapInterval() call */
     eglDisplay = display->devDpy->eglDisplay;
 
+    pthread_mutex_unlock(&display->mutex);
+
     if (!(data->egl.swapInterval(eglDisplay, interval))) {
+        wlEglReleaseDisplay(display);
         return EGL_FALSE;
     }
 
@@ -171,7 +195,8 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
 
     /* Check this is a valid wayland EGL surface (and stream) before sending the
      * swap interval value to the consumer */
-    if (!wlEglIsWlEglSurfaceForDisplay(display, surface) ||
+    if (display->initCount == 0 ||
+        !wlEglIsWlEglSurfaceForDisplay(display, surface) ||
         (surface->swapInterval == interval) ||
         (surface->ctx.wlStreamResource == NULL) ||
         (surface->ctx.eglStream == EGL_NO_STREAM_KHR) ||
@@ -194,14 +219,19 @@ EGLBoolean wlEglSwapIntervalHook(EGLDisplay eglDisplay, EGLint interval)
 
 done:
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
 
-    return EGL_TRUE;
+    return ret;
 }
 
 EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
-    WlEglDisplay *display = surface->wlEglDpy;
+    WlEglDisplay *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
+    if (!display) {
+        return EGL_FALSE;
+    }
 
     pthread_mutex_lock(&display->mutex);
+
     if (surface->pendingSwapIntervalUpdate == EGL_TRUE) {
         /* Send request from client to override swapinterval value based on
          * server's swapinterval for overlay compositing
@@ -213,6 +243,7 @@ EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
         if (wl_display_roundtrip_queue(display->nativeDpy,
                                        display->wlEventQueue) < 0) {
             pthread_mutex_unlock(&display->mutex);
+            wlEglReleaseDisplay(display);
             return EGL_FALSE;
         }
         surface->pendingSwapIntervalUpdate = EGL_FALSE;
@@ -227,14 +258,21 @@ EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
 
     // Release wlEglSurface lock.
     pthread_mutex_unlock(&surface->mutexLock);
+    wlEglReleaseDisplay(display);
 
     return EGL_TRUE;
 }
 
 EGLBoolean wlEglPostPresentExport(WlEglSurface *surface) {
-    WlEglDisplay          *display = surface->wlEglDpy;
-    WlEglPlatformData     *data    = display->data;
+    WlEglDisplay          *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
+    WlEglPlatformData     *data    = NULL;
     EGLBoolean             res     = EGL_TRUE;
+
+    if (!display) {
+        return EGL_FALSE;
+    }
+
+    data = display->data;
 
     // Acquire wlEglSurface lock.
     pthread_mutex_lock(&surface->mutexLock);
@@ -254,7 +292,7 @@ EGLBoolean wlEglPostPresentExport(WlEglSurface *surface) {
 
     // Release wlEglSurface lock.
     pthread_mutex_unlock(&surface->mutexLock);
-
+    wlEglReleaseDisplay(display);
 
     return res;
 }

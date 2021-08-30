@@ -283,12 +283,16 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
 
 EGLBoolean wlEglTerminateHook(EGLDisplay dpy)
 {
-    WlEglDisplay *display = (WlEglDisplay *)dpy;
+    WlEglDisplay *display = wlEglAcquireDisplay(dpy);
     EGLBoolean res;
 
+    if (!display) {
+        return EGL_FALSE;
+    }
     pthread_mutex_lock(&display->mutex);
-    res = terminateDisplay(dpy, EGL_FALSE);
+    res = terminateDisplay(display, EGL_FALSE);
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
 
     return res;
 }
@@ -339,13 +343,13 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                                          void *nativeDpy,
                                          const EGLAttrib *attribs)
 {
-    WlEglPlatformData     *pData        = (WlEglPlatformData *)data;
-    WlEglDisplay          *display      = NULL;
-    EGLint                 numDevices   = 0;
-    int                    i            = 0;
-    EGLDeviceEXT           eglDevice    = NULL;
-    EGLint                 err          = EGL_SUCCESS;
-    EGLBoolean             useRefCount  = EGL_FALSE;
+    WlEglPlatformData     *pData           = (WlEglPlatformData *)data;
+    WlEglDisplay          *display         = NULL;
+    EGLint                 numDevices      = 0;
+    int                    i               = 0;
+    EGLDeviceEXT           eglDevice       = NULL;
+    EGLint                 err             = EGL_SUCCESS;
+    EGLBoolean             useInitRefCount = EGL_FALSE;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -359,7 +363,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         for (i = 0; attribs[i] != EGL_NONE; i += 2) {
             if (attribs[i] == EGL_TRACK_REFERENCES_KHR) {
                 if (attribs[i + 1] == EGL_TRUE || attribs[i + 1] == EGL_FALSE) {
-                    useRefCount = (EGLBoolean) attribs[i + 1];
+                    useInitRefCount = (EGLBoolean) attribs[i + 1];
                 } else {
                     wlEglSetError(data, EGL_BAD_ATTRIBUTE);
                     return EGL_NO_DISPLAY;
@@ -377,7 +381,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     wl_list_for_each(display, &wlEglDisplayList, link) {
         if ((display->nativeDpy == nativeDpy ||
             (!nativeDpy && display->ownNativeDpy))
-            && display->useRefCount == useRefCount) {
+            && display->useInitRefCount == useInitRefCount) {
             wlExternalApiUnlock();
             return (EGLDisplay)display;
         }
@@ -393,7 +397,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display->data = pData;
 
     display->nativeDpy   = nativeDpy;
-    display->useRefCount = useRefCount;
+    display->useInitRefCount = useInitRefCount;
 
     /* If default display is requested, create a new Wayland display connection
      * and its corresponding internal EGLDisplay. Otherwise, check for existing
@@ -431,6 +435,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         wlExternalApiUnlock();
         goto fail;
     }
+    display->refCount = 1;
     WL_LIST_INIT(&display->wlEglSurfaceList);
 
 
@@ -457,13 +462,18 @@ fail:
 
 EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
 {
-    WlEglDisplay      *display     = (WlEglDisplay *)dpy;
-    WlEglPlatformData *data        = display->data;
-    struct wl_display     *wrapper      = NULL;
-    EGLint                 err          = EGL_SUCCESS;
-    int                    ret          = 0;
+    WlEglDisplay      *display = wlEglAcquireDisplay(dpy);
+    WlEglPlatformData *data    = NULL;
+    struct wl_display *wrapper = NULL;
+    EGLint             err     = EGL_SUCCESS;
+    int                ret     = 0;
 
+    if (!display) {
+        return EGL_FALSE;
+    }
     pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
 
     if (display->initCount > 0) {
         // This display has already been initialized.
@@ -473,15 +483,17 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         if (minor) {
                 *minor = display->devDpy->minor;
         }
-        if (display->useRefCount) {
+        if (display->useInitRefCount) {
             display->initCount++;
         }
         pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
         return EGL_TRUE;
     }
 
     if (!wlInternalInitialize(display->devDpy)) {
         pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
         return EGL_FALSE;
     }
 
@@ -536,6 +548,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     }
 
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
     return EGL_TRUE;
 
 fail:
@@ -544,6 +557,7 @@ fail:
         wlEglSetError(data, err);
     }
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
     return EGL_FALSE;
 }
 
@@ -558,6 +572,31 @@ EGLBoolean wlEglIsWlEglDisplay(WlEglDisplay *display)
     }
 
     return EGL_FALSE;
+}
+
+WlEglDisplay *wlEglAcquireDisplay(EGLDisplay dpy) {
+    WlEglDisplay *display = (WlEglDisplay *)dpy;
+    wlExternalApiLock();
+    if (wlEglIsWlEglDisplay(display)) {
+        ++display->refCount;
+    } else {
+        display = NULL;
+    }
+    wlExternalApiUnlock();
+    return display;
+}
+
+static void wlEglUnrefDisplay(WlEglDisplay *display) {
+    if (--display->refCount == 0) {
+        wlEglMutexDestroy(&display->mutex);
+        free(display);
+    }
+}
+
+void wlEglReleaseDisplay(WlEglDisplay *display) {
+    wlExternalApiLock();
+    wlEglUnrefDisplay(display);
+    wlExternalApiUnlock();
 }
 
 EGLBoolean wlEglChooseConfigHook(EGLDisplay dpy,
@@ -669,20 +708,28 @@ EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
                                        EGLint name,
                                        EGLAttrib *value)
 {
-    WlEglDisplay *display = (WlEglDisplay *) dpy;
-    WlEglPlatformData *data = display->data;
+    WlEglDisplay *display = wlEglAcquireDisplay(dpy);
+    WlEglPlatformData *data = NULL;
     EGLBoolean ret = EGL_TRUE;
+
+    if (!display) {
+        return EGL_FALSE;
+    }
+    pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
 
     if (value == NULL) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
+        pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
         return EGL_FALSE;
     }
-
-    pthread_mutex_lock(&display->mutex);
 
     if (display->initCount == 0) {
         wlEglSetError(data, EGL_NOT_INITIALIZED);
         pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
         return EGL_FALSE;
     }
 
@@ -691,7 +738,7 @@ EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
         *value = (EGLAttrib) display->devDpy->eglDevice;
         break;
     case EGL_TRACK_REFERENCES_KHR:
-        *value = (EGLAttrib) display->useRefCount;
+        *value = (EGLAttrib) display->useInitRefCount;
         break;
     default:
         ret = data->egl.queryDisplayAttrib(display->devDpy->eglDisplay, name, value);
@@ -699,6 +746,7 @@ EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
     }
 
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
     return ret;
 }
 
@@ -712,14 +760,16 @@ EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data)
 
     wl_list_for_each_safe(display, next, &wlEglDisplayList, link) {
         if (display->data == data) {
-            res = terminateDisplay((EGLDisplay)display, EGL_TRUE) && res;
+            pthread_mutex_lock(&display->mutex);
+            res = terminateDisplay(display, EGL_TRUE) && res;
             if (display->ownNativeDpy) {
                 wl_display_disconnect(display->nativeDpy);
             }
-            wlEglMutexDestroy(&display->mutex);
+            display->devDpy = NULL;
+            pthread_mutex_unlock(&display->mutex);
             wl_list_remove(&display->link);
-            /* Destroy the external display */
-            free(display);
+            /* Unref the external display */
+            wlEglUnrefDisplay(display);
         }
     }
 

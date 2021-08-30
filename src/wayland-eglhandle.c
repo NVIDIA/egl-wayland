@@ -143,20 +143,24 @@ void wlEglDestroyPlatformData(WlEglPlatformData *data)
 
 void* wlEglGetInternalHandleExport(EGLDisplay dpy, EGLenum type, void *handle)
 {
-    wlExternalApiLock();
-
-    if ((type == EGL_OBJECT_DISPLAY_KHR) &&
-        wlEglIsWlEglDisplay((WlEglDisplay *)handle)) {
-        handle = (void *)(((WlEglDisplay *)handle)->devDpy->eglDisplay);
-    } else if ((type == EGL_OBJECT_SURFACE_KHR) &&
-               wlEglIsWlEglDisplay((WlEglDisplay *)dpy)) {
-        WlEglDisplay *display = (WlEglDisplay *)dpy;
-        if (wlEglIsWlEglSurfaceForDisplay(display, (WlEglSurface *)handle)) {
-            handle = (void *)(((WlEglSurface *)handle)->ctx.eglSurface);
+    WlEglDisplay *display;
+    if (type == EGL_OBJECT_DISPLAY_KHR) {
+        display = wlEglAcquireDisplay(handle);
+        if (display) {
+            handle = (void *)display->devDpy->eglDisplay;
+            wlEglReleaseDisplay(display);
+        }
+    } else if (type == EGL_OBJECT_SURFACE_KHR) {
+        display = wlEglAcquireDisplay(dpy);
+        if (display) {
+            pthread_mutex_lock(&display->mutex);
+            if (wlEglIsWlEglSurfaceForDisplay(display, (WlEglSurface *)handle)) {
+                handle = (void *)(((WlEglSurface *)handle)->ctx.eglSurface);
+            }
+            pthread_mutex_unlock(&display->mutex);
+            wlEglReleaseDisplay(dpy);
         }
     }
-
-    wlExternalApiUnlock();
 
     return handle;
 }

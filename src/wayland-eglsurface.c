@@ -912,21 +912,28 @@ fail:
 
 EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
 {
-    WlEglDisplay *display = surface->wlEglDpy;
+    WlEglDisplay *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
+
+    if (!display) {
+        return EGL_FALSE;
+    }
 
     pthread_mutex_lock(&display->mutex);
+
     // Create per surface wayland queue
     surface->wlEventQueue = wl_display_create_queue(display->nativeDpy);
     surface->refCount = 1;
 
     if (!wlEglInitializeMutex(&surface->mutexLock)) {
         pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
         return EGL_FALSE;
     }
 
     if (create_surface_context(surface) != EGL_SUCCESS) {
         wl_event_queue_destroy(surface->wlEventQueue);
         pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
         return EGL_FALSE;
     }
 
@@ -939,6 +946,7 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
     surface->pendingSwapIntervalUpdate = EGL_TRUE;
 
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
     return EGL_TRUE;
 }
 
@@ -1219,15 +1227,20 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
                                                 void *nativeWin,
                                                 const EGLAttrib *attribs)
 {
-    WlEglDisplay         *display = (WlEglDisplay*)dpy;
-    WlEglPlatformData    *data    = display->data;
+    WlEglDisplay         *display = wlEglAcquireDisplay(dpy);
+    WlEglPlatformData    *data    = NULL;
     WlEglSurface         *surface = NULL;
     struct wl_egl_window *window  = (struct wl_egl_window *)nativeWin;
     EGLBoolean            res     = EGL_FALSE;
     EGLint                err     = EGL_SUCCESS;
     EGLint                surfType;
 
+    if (!display) {
+        return EGL_NO_SURFACE;
+    }
     pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
 
     if (display->initCount == 0) {
         err = EGL_NOT_INITIALIZED;
@@ -1318,6 +1331,7 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
 
     wl_list_insert(&display->wlEglSurfaceList, &surface->link);
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
 
     return surface;
 
@@ -1327,6 +1341,7 @@ fail:
     }
 
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
 
     wlEglSetError(data, err);
 
@@ -1352,11 +1367,18 @@ EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
                                          EGLConfig config,
                                          const EGLint *attribs)
 {
-    WlEglDisplay      *display = (WlEglDisplay*)dpy;
-    WlEglPlatformData *data    = display->data;
+    WlEglDisplay      *display = wlEglAcquireDisplay(dpy);
+    WlEglPlatformData *data    = NULL;
     WlEglSurface      *surface = NULL;
     EGLSurface         surf    = EGL_NO_SURFACE;
     EGLint             err     = EGL_SUCCESS;
+
+    if (!display) {
+        return EGL_NO_SURFACE;
+    }
+    pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
 
     /* Nothing really special needs to be done. Just fall back to the driver's
      * Pbuffer surface creation function */
@@ -1386,13 +1408,16 @@ EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
     surface->isDestroyed = EGL_FALSE;
     wl_list_init(&surface->oldCtxList);
 
-    pthread_mutex_lock(&display->mutex);
     wl_list_insert(&display->wlEglSurfaceList, &surface->link);
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
 
     return surface;
 
 fail:
+    pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
+
     if (err != EGL_SUCCESS) {
         wlEglSetError(data, err);
     }
@@ -1404,11 +1429,18 @@ EGLSurface wlEglCreateStreamProducerSurfaceHook(EGLDisplay dpy,
                                                 EGLStreamKHR stream,
                                                 const EGLint *attribs)
 {
-    WlEglDisplay      *display = (WlEglDisplay*)dpy;
-    WlEglPlatformData *data    = display->data;
+    WlEglDisplay      *display = wlEglAcquireDisplay(dpy);
+    WlEglPlatformData *data    = NULL;
     WlEglSurface      *surface = NULL;
     EGLSurface         surf    = EGL_NO_SURFACE;
     EGLint             err     = EGL_SUCCESS;
+
+    if (!display) {
+        return EGL_NO_SURFACE;
+    }
+    pthread_mutex_lock(&display->mutex);
+
+    data = display->data;
 
     /* Nothing really special needs to be done. Just fall back to the driver's
      * stream producer surface creation function */
@@ -1438,13 +1470,15 @@ EGLSurface wlEglCreateStreamProducerSurfaceHook(EGLDisplay dpy,
     surface->isDestroyed = EGL_FALSE;
     wl_list_init(&surface->oldCtxList);
 
-    pthread_mutex_lock(&display->mutex);
     wl_list_insert(&display->wlEglSurfaceList, &surface->link);
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
 
     return surface;
 
 fail:
+    pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
     if (err != EGL_SUCCESS) {
         wlEglSetError(data, err);
     }
@@ -1453,9 +1487,12 @@ fail:
 
 EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
 {
-    WlEglDisplay *display = (WlEglDisplay*)dpy;
+    WlEglDisplay *display = wlEglAcquireDisplay(dpy);
     EGLint ret = EGL_FALSE;
 
+    if (!display) {
+        return EGL_FALSE;
+    }
     pthread_mutex_lock(&display->mutex);
 
     if (display->initCount == 0) {
@@ -1470,6 +1507,7 @@ EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface)
 
 done:
     pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
     return ret;
 }
 
