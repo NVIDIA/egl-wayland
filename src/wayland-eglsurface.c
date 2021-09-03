@@ -1118,23 +1118,12 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
         // We only expect a valid wlEglWin to be set when using
         // a surface created with EGL_KHR_platform_wayland.
         if (wlEglIsWaylandDisplay(display->nativeDpy) &&
-           (wlEglIsWaylandWindowValid(surface->wlEglWin) ||
-           (!surface->isSurfaceProducer))) {
+            wlEglIsWaylandWindowValid(surface->wlEglWin)) {
 
-            if (surface->wlEventQueue != NULL) {
-                wl_surface_attach(surface->wlSurface, NULL, 0, 0);
-                wl_surface_commit(surface->wlSurface);
-
-                wl_display_roundtrip_queue(display->nativeDpy,
-                                           surface->wlEventQueue);
-            }
-
-            if (surface->isSurfaceProducer) {
-                surface->wlEglWin->driver_private = NULL;
-                surface->wlEglWin->resize_callback = NULL;
-                if (surface->wlEglWinVer >= WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE) {
-                    surface->wlEglWin->destroy_window_callback = NULL;
-                }
+            surface->wlEglWin->driver_private = NULL;
+            surface->wlEglWin->resize_callback = NULL;
+            if (surface->wlEglWinVer >= WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE) {
+                surface->wlEglWin->destroy_window_callback = NULL;
             }
         }
     }
