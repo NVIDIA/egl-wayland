@@ -68,7 +68,7 @@ static int try_pipe_write(int fd, const void *p, size_t len)
     if (result == -1 && errno == EAGAIN) {
         result = 0;
     }
-    assert(result != -1 || errno == EFAULT);
+    assert(result != -1 || errno == EFAULT || errno == EINVAL);
     return result;
 }
 
