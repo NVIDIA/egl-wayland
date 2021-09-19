@@ -71,7 +71,12 @@ EGLBoolean wlEglMemoryIsReadable(const void *p, size_t len)
 
     /* write will fail with EFAULT if the provided buffer is outside
      * our accessible address space. */
-    result = write(fds[1], p, len);
+    do {
+        result = write(fds[1], p, len);
+    } while (result == -1 && errno == EINTR);
+    if (result == -1 && errno == EAGAIN) {
+        result = 0;
+    }
     assert(result != -1 || errno == EFAULT);
 
 done:
