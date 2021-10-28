@@ -49,7 +49,8 @@ libnvidia_egl_wayland_la_built_private_protocols =            \
 
 libnvidia_egl_wayland_la_built_client_headers =               \
     wayland-eglstream/wayland-eglstream-client-protocol.h     \
-    wayland-eglstream/wayland-eglstream-controller-client-protocol.h
+    wayland-eglstream/wayland-eglstream-controller-client-protocol.h \
+    wayland-drm/wayland-drm-client-protocol.h
 
 libnvidia_egl_wayland_la_built_server_headers =               \
     wayland-eglstream/wayland-eglstream-server-protocol.h     \
