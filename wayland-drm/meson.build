@@ -1,5 +1,7 @@
-foreach output_type: ['server-header', 'public-code']
-    if output_type == 'server-header'
+foreach output_type: ['client-header', 'server-header', 'public-code']
+    if output_type == 'client-header'
+        output_file = 'wayland-drm-client-protocol.h'
+    elif output_type == 'server-header'
         output_file = 'wayland-drm-server-protocol.h'
     else
         output_file = 'wayland-drm-protocol.c'

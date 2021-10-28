@@ -47,6 +47,7 @@ src = [
     wayland_eglstream_controller_protocol_c,
     wayland_eglstream_controller_client_protocol_h,
     wayland_drm_protocol_c,
+    wayland_drm_client_protocol_h,
     wayland_drm_server_protocol_h,
 ]
 
