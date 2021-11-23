@@ -49,7 +49,8 @@ EGLBoolean
 wl_eglstream_display_bind(WlEglPlatformData *data,
                           struct wl_display *wlDisplay,
                           EGLDisplay eglDisplay,
-                          const char *exts);
+                          const char *exts,
+                          const char *dev_name);
 
 /*
  * wl_eglstream_display_unbind()

@@ -152,37 +152,36 @@ bind(struct wl_client *client, void *data, uint32_t version, uint32_t id)
         wl_resource_post_event(resource, WL_DRM_CAPABILITIES, 0);
 }
 
-EGLBoolean
-wl_drm_display_bind(struct wl_display *display,
-                    struct wl_eglstream_display *wlStreamDpy)
+const char *
+wl_drm_get_dev_name(const WlEglPlatformData *data,
+                    EGLDisplay dpy)
 {
-    EGLDisplay dpy = wlStreamDpy->eglDisplay;
     EGLDeviceEXT egl_dev;
     const char *dev_exts;
-    const char *dev_name;
 
-    if (!wlStreamDpy->data->egl.queryDisplayAttrib(dpy,
-                                                   EGL_DEVICE_EXT,
-                                                   (EGLAttribKHR*)&egl_dev)) {
-        return EGL_FALSE;
+    if (!data->egl.queryDisplayAttrib(dpy, EGL_DEVICE_EXT,
+                                      (EGLAttribKHR*)&egl_dev)) {
+        return NULL;
     }
 
-
-    dev_exts = wlStreamDpy->data->egl.queryDeviceString(egl_dev,
-                                                        EGL_EXTENSIONS);
+    dev_exts = data->egl.queryDeviceString(egl_dev, EGL_EXTENSIONS);
 
     if (!dev_exts) {
-        return EGL_FALSE;
+        return NULL;
     }
 
     if (!wlEglFindExtension("EGL_EXT_device_drm_render_node", dev_exts)) {
-        return EGL_FALSE;
+        return NULL;
     }
 
-    dev_name =
-        wlStreamDpy->data->egl.queryDeviceString(egl_dev,
-                                                 EGL_DRM_RENDER_NODE_FILE_EXT);
+    return data->egl.queryDeviceString(egl_dev, EGL_DRM_RENDER_NODE_FILE_EXT);
+}
 
+EGLBoolean
+wl_drm_display_bind(struct wl_display *display,
+                    struct wl_eglstream_display *wlStreamDpy,
+                    const char *dev_name)
+{
     if (!dev_name) {
         return EGL_FALSE;
     }

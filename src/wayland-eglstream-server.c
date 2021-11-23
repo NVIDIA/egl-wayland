@@ -289,7 +289,8 @@ EGLBoolean
 wl_eglstream_display_bind(WlEglPlatformData *data,
                           struct wl_display *wlDisplay,
                           EGLDisplay eglDisplay,
-                          const char *exts)
+                          const char *exts,
+                          const char *dev_name)
 {
     struct wl_eglstream_display *wlStreamDpy = NULL;
     char                        *env         = NULL;
@@ -355,7 +356,7 @@ wl_eglstream_display_bind(WlEglPlatformData *data,
                                            wl_eglstream_display_global_bind);
 
     /* Failure is not fatal */
-    wl_drm_display_bind(wlDisplay, wlStreamDpy);
+    wl_drm_display_bind(wlDisplay, wlStreamDpy, dev_name);
 
     wl_list_insert(&wlStreamDpyList, &wlStreamDpy->link);
 

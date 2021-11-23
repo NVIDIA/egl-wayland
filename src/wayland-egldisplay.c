@@ -30,6 +30,7 @@
 #include "wayland-eglhandle.h"
 #include "wayland-eglutils.h"
 #include "wayland-drm-client-protocol.h"
+#include "wayland-drm.h"
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -70,15 +71,16 @@ EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy)
 
 EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy)
 {
-    /* Retrieve extension string before taking external API lock */
-    const char *exts = ((WlEglPlatformData *)data)->egl.queryString(dpy, EGL_EXTENSIONS);
+    /* Retrieve extension string and device name before taking external API lock */
+    const char *exts = ((WlEglPlatformData *)data)->egl.queryString(dpy, EGL_EXTENSIONS),
+               *dev_name = wl_drm_get_dev_name(data, dpy);
     EGLBoolean res = EGL_FALSE;
 
     wlExternalApiLock();
 
     res = wl_eglstream_display_bind((WlEglPlatformData *)data,
                                     (struct wl_display *)nativeDpy,
-                                    dpy, exts);
+                                    dpy, exts, dev_name);
 
     wlExternalApiUnlock();
 

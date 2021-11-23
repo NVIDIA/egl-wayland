@@ -23,9 +23,14 @@
 #ifndef WAYLAND_DRM_H
 #define WAYLAND_DRM_H
 
+extern const char *
+wl_drm_get_dev_name(const WlEglPlatformData *data,
+                    EGLDisplay dpy);
+
 extern EGLBoolean
 wl_drm_display_bind(struct wl_display *display,
-                    struct wl_eglstream_display *wlStreamDpy);
+                    struct wl_eglstream_display *wlStreamDpy,
+                    const char *dev_name);
 extern void
 wl_drm_display_unbind(struct wl_eglstream_display *wlStreamDpy);
 
