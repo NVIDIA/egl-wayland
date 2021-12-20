@@ -1020,16 +1020,16 @@ const char* wlEglQueryStringExport(void *data,
 
     switch (name) {
     case EGL_EXT_PLATFORM_PLATFORM_CLIENT_EXTENSIONS:
-        res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
-                        "EGL_EXT_platform_wayland";
+        res = isEGL15 ? "EGL_EXT_present_opaque EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+                        "EGL_EXT_present_opaque EGL_EXT_platform_wayland";
         break;
 
     case EGL_EXT_PLATFORM_DISPLAY_EXTENSIONS:
         if (dpy == EGL_NO_DISPLAY) {
             /* This should return all client extensions, which for now is
              * equivalent to EXTERNAL_PLATFORM_CLIENT_EXTENSIONS */
-            res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
-                            "EGL_EXT_platform_wayland";
+            res = isEGL15 ? "EGL_EXT_present_opaque EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+                            "EGL_EXT_present_opaque EGL_EXT_platform_wayland";
         } else {
             /*
              * Check whether the given display supports EGLStream
@@ -1056,13 +1056,13 @@ const char* wlEglQueryStringExport(void *data,
                                    exts)) {
                 if (wlEglFindExtension("EGL_KHR_stream_cross_process_fd",
                                        exts)) {
-                    res = "EGL_WL_bind_wayland_display "
+                    res = "EGL_EXT_present_opaque EGL_WL_bind_wayland_display "
                         "EGL_WL_wayland_eglstream";
                 } else if (wlEglFindExtension("EGL_NV_stream_consumer_eglimage",
                                               exts) &&
                            wlEglFindExtension("EGL_MESA_image_dma_buf_export",
                                               exts)) {
-                    res = "EGL_WL_bind_wayland_display";
+                    res = "EGL_EXT_present_opaque EGL_WL_bind_wayland_display";
                 }
             }
         }
