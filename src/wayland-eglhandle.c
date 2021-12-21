@@ -72,6 +72,7 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
     GET_PROC(terminate,                   eglTerminate);
     GET_PROC(chooseConfig,                eglChooseConfig);
     GET_PROC(getConfigAttrib,             eglGetConfigAttrib);
+    GET_PROC(querySurface,                eglQuerySurface);
 
     GET_PROC(getCurrentContext,           eglGetCurrentContext);
     GET_PROC(getCurrentSurface,           eglGetCurrentSurface);

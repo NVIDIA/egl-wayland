@@ -133,6 +133,9 @@ typedef struct WlEglSurfaceRec {
      * eglSwapBuffers(), so just set a resize flag.
      */
     EGLBoolean isResized;
+
+    /* True when the EGL_PRESENT_OPAQUE_EXT surface attrib is set by the app */
+    EGLBoolean presentOpaque;
 } WlEglSurface;
 
 WL_EXPORT
@@ -162,6 +165,8 @@ EGLBoolean wlEglDestroyAllSurfaces(WlEglDisplay *display);
 
 EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window);
 EGLBoolean wlEglIsWlEglSurfaceForDisplay(WlEglDisplay *display, WlEglSurface *wlEglSurface);
+
+EGLBoolean wlEglQuerySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface, EGLint attribute, EGLint *value);
 
 EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
                                         void *nativeResource,

@@ -76,6 +76,7 @@ typedef struct WlEglPlatformDataRec {
         PWLEGLFNTERMINATECOREPROC                   terminate;
         PWLEGLFNCHOOSECONFIGCOREPROC                chooseConfig;
         PWLEGLFNGETCONFIGATTRIBCOREPROC             getConfigAttrib;
+        PFNEGLQUERYSURFACEPROC                      querySurface;
 
         PWLEGLFNGETCURRENTCONTEXTCOREPROC           getCurrentContext;
         PWLEGLFNGETCURRENTSURFACECOREPROC           getCurrentSurface;

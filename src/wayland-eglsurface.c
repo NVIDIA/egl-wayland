@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
+#include <libdrm/drm_fourcc.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
@@ -1023,6 +1024,24 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
                                        modifier >> 32,
                                        modifier & 0xffffffff);
 
+        /*
+         * Before sending the format, check if we are ignoring alpha due to a
+         * surface attribute.
+         */
+        if (surface->presentOpaque) {
+            /*
+             * We are ignoring alpha, so we need to find a DRM_FORMAT_* that is equivalent to
+             * the current format, but ignores the alpha. i.e. RGBA -> RGBX
+             *
+             * There is also only one format with alpha that we expose on wayland: ARGB8888. If
+             * the format does not match this, silently ignore it as the app must be mistakenly
+             * using EGL_PRESENT_OPAQUE_EXT on an already opaque surface.
+             */
+            if (format == DRM_FORMAT_ARGB8888) {
+                format = DRM_FORMAT_XRGB8888;
+            }
+        }
+
         image->buffer = zwp_linux_buffer_params_v1_create_immed(params,
                                                                 surface->width,
                                                                 surface->height,
@@ -1647,6 +1666,9 @@ static EGLBoolean validateSurfaceAttrib(EGLAttrib attrib, EGLAttrib value)
     case EGL_HEIGHT:
         return EGL_FALSE;
 
+    case EGL_PRESENT_OPAQUE_EXT:
+        return EGL_TRUE;
+
     /* If attribute is supported/unsupported for both EGL_WINDOW_BIT and
      * EGL_STREAM_BIT_KHR, then that will be handled inside the actual
      * eglCreateStreamProducerSurfaceKHR() */
@@ -1690,6 +1712,10 @@ static EGLint assignWlEglSurfaceAttribs(WlEglSurface *surface,
 
     if (attribs) {
         for (i = 0; attribs[i] != EGL_NONE; i += 2) {
+            if (attribs[i] == EGL_PRESENT_OPAQUE_EXT) {
+                surface->presentOpaque = EGL_TRUE;
+                continue;
+            }
             if ((attribs[i] != EGL_RENDER_BUFFER) &&
                 (attribs[i] != EGL_POST_SUB_BUFFER_SUPPORTED_NV)) {
                 int_attribs[nAttribs++] = (EGLint)attribs[i];
@@ -1703,6 +1729,38 @@ static EGLint assignWlEglSurfaceAttribs(WlEglSurface *surface,
     surface->attribs = int_attribs;
 
     return EGL_SUCCESS;
+}
+
+
+EGLBoolean wlEglQuerySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface,
+                                 EGLint attribute, EGLint *value)
+{
+    WlEglDisplay *display       = wlEglAcquireDisplay(dpy);
+    WlEglPlatformData *data     = NULL;
+    WlEglSurface *surface       = (WlEglSurface *)eglSurface;
+    EGLint ret                  = EGL_FALSE;
+
+    if (!display) {
+        return EGL_FALSE;
+    }
+    data = display->data;
+
+    if (!wlEglIsWlEglSurfaceForDisplay(display, surface)) {
+        goto done;
+    }
+
+    if (attribute == EGL_PRESENT_OPAQUE_EXT) {
+        *value = surface->presentOpaque;
+        ret = EGL_TRUE;
+        goto done;
+    }
+
+    dpy = display->devDpy->eglDisplay;
+    ret = data->egl.querySurface(dpy, surface->ctx.eglSurface, attribute, value);
+
+done:
+    wlEglReleaseDisplay(display);
+    return ret;
 }
 
 EGLBoolean wlEglSurfaceRef(WlEglDisplay *display, WlEglSurface *surface)
