@@ -1020,16 +1020,16 @@ const char* wlEglQueryStringExport(void *data,
 
     switch (name) {
     case EGL_EXT_PLATFORM_PLATFORM_CLIENT_EXTENSIONS:
-        res = isEGL15 ? "EGL_EXT_present_opaque EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
-                        "EGL_EXT_present_opaque EGL_EXT_platform_wayland";
+        res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+                        "EGL_EXT_platform_wayland";
         break;
 
     case EGL_EXT_PLATFORM_DISPLAY_EXTENSIONS:
         if (dpy == EGL_NO_DISPLAY) {
             /* This should return all client extensions, which for now is
              * equivalent to EXTERNAL_PLATFORM_CLIENT_EXTENSIONS */
-            res = isEGL15 ? "EGL_EXT_present_opaque EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
-                            "EGL_EXT_present_opaque EGL_EXT_platform_wayland";
+            res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+                            "EGL_EXT_platform_wayland";
         } else {
             /*
              * Check whether the given display supports EGLStream
