@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2018, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2022, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,7 @@
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
-#include "wayland-eglsurface.h"
+#include "wayland-eglsurface-internal.h"
 #include "wayland-eglhandle.h"
 #include "wayland-eglutils.h"
 #include "wayland-drm-client-protocol.h"

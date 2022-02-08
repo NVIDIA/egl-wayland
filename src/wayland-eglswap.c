@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2022, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,7 +24,7 @@
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-thread.h"
 #include "wayland-egldisplay.h"
-#include "wayland-eglsurface.h"
+#include "wayland-eglsurface-internal.h"
 #include "wayland-eglhandle.h"
 #include "wayland-eglutils.h"
 #include <assert.h>
@@ -226,6 +226,7 @@ done:
     return ret;
 }
 
+WL_EXPORT
 EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
     WlEglDisplay *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
     if (!display) {
@@ -265,6 +266,7 @@ EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
     return EGL_TRUE;
 }
 
+WL_EXPORT
 EGLBoolean wlEglPostPresentExport(WlEglSurface *surface) {
     WlEglDisplay          *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
     WlEglPlatformData     *data    = NULL;

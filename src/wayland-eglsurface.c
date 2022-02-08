@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2022, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -20,7 +20,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "wayland-eglsurface.h"
+#include "wayland-eglsurface-internal.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
@@ -1532,31 +1532,54 @@ fail:
     return err;
 }
 
-EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
+WL_EXPORT
+EGLStreamKHR wlEglGetSurfaceStreamExport(WlEglSurface *surface)
 {
-    WlEglDisplay *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
+    if (!surface)
+        return EGL_NO_STREAM_KHR;
+
+    return surface->ctx.eglStream;
+}
+
+WL_EXPORT
+WlEglSurface *wlEglInitializeSurfaceExport(EGLDisplay dpy,
+                                           int width,
+                                           int height,
+                                           struct wl_surface *native_surface,
+                                           int fifo_length)
+{
+    WlEglDisplay *display = (WlEglDisplay *)wlEglAcquireDisplay(dpy);
+    WlEglSurface *surface = NULL;
 
     if (!display) {
-        return EGL_FALSE;
+        return NULL;
     }
 
     pthread_mutex_lock(&display->mutex);
+
+    surface = calloc(1, sizeof (*surface));
+    if (!surface) {
+        goto fail;
+    }
+
+    surface->wlEglDpy = display;
+    surface->width = width;
+    surface->height = height;
+    surface->wlSurface = native_surface;
+    surface->fifoLength = fifo_length;
+    surface->swapInterval = fifo_length > 0 ? 1 : 0;
 
     // Create per surface wayland queue
     surface->wlEventQueue = wl_display_create_queue(display->nativeDpy);
     surface->refCount = 1;
 
     if (!wlEglInitializeMutex(&surface->mutexLock)) {
-        pthread_mutex_unlock(&display->mutex);
-        wlEglReleaseDisplay(display);
-        return EGL_FALSE;
+        goto fail;
     }
 
     if (create_surface_context(surface) != EGL_SUCCESS) {
         wl_event_queue_destroy(surface->wlEventQueue);
-        pthread_mutex_unlock(&display->mutex);
-        wlEglReleaseDisplay(display);
-        return EGL_FALSE;
+        goto fail;
     }
 
     wl_list_insert(&display->wlEglSurfaceList, &surface->link);
@@ -1571,7 +1594,13 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
 
     pthread_mutex_unlock(&display->mutex);
     wlEglReleaseDisplay(display);
-    return EGL_TRUE;
+    return surface;
+
+fail:
+    pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
+    free(surface);
+    return NULL;
 }
 
 void

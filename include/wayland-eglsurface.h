@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2019, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2022, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -34,155 +34,17 @@
 extern "C" {
 #endif
 
-typedef struct WlEglStreamImageRec {
-    /* Pointer back to the parent surface for use in Wayland callbacks */
-    struct WlEglSurfaceRec *surface;
-
-    /*
-     * Use an individual mutex to guard access to each image's data. This avoids
-     * sharing the surface lock between the app and buffer release event
-     * threads, resulting in simplified lock management and smaller critical
-     * sections.
-     */
-    pthread_mutex_t         mutex;
-
-    EGLImageKHR             eglImage;
-    struct wl_buffer       *buffer;
-    EGLBoolean              attached;
-    struct wl_list          acquiredLink;
-} WlEglStreamImage;
-
-typedef struct WlEglSurfaceCtxRec {
-    EGLBoolean              isOffscreen;
-    EGLSurface              eglSurface;
-    EGLStreamKHR            eglStream;
-    void                   *wlStreamResource;
-    EGLBoolean              isAttached;
-
-    int          useDamageThread;
-    pthread_t    damageThreadId;
-    EGLSyncKHR   damageThreadSync;
-    int          damageThreadFlush;
-    int          damageThreadShutdown;
-    EGLuint64KHR framesProduced;
-    EGLuint64KHR framesFinished;
-    EGLuint64KHR framesProcessed;
-
-    /*
-     * The double pointer is because of the need to allocate the data for each
-     * image slot separately to avoid clobbering the acquiredLink member
-     * whenever the streamImages arrary is resized with realloc().
-     */
-    WlEglStreamImage      **streamImages;
-    struct wl_list          acquiredImages;
-    struct wl_buffer       *currentBuffer;
-    uint32_t                numStreamImages;
-
-    struct wl_list link;
-} WlEglSurfaceCtx;
-
-typedef struct WlEglSurfaceRec {
-    WlEglDisplay *wlEglDpy;
-    EGLConfig     eglConfig;
-    EGLint       *attribs;
-    EGLBoolean    pendingSwapIntervalUpdate;
-
-    struct wl_egl_window *wlEglWin;
-    long int              wlEglWinVer;
-    struct wl_surface    *wlSurface;
-    int                   width, height;
-    int                   dx,    dy;
-
-    WlEglSurfaceCtx ctx;
-    struct wl_list  oldCtxList;
-
-    EGLint swapInterval;
-    EGLint fifoLength;
-
-    struct wl_callback    *throttleCallback;
-    struct wl_event_queue *wlEventQueue;
-
-    /* Asynchronous wl_buffer.release event processing */
-    struct {
-        struct wl_event_queue  *wlBufferEventQueue;
-        pthread_t               bufferReleaseThreadId;
-        int                     bufferReleaseThreadPipe[2];
-    };
-
-    struct wl_list link;
-
-    EGLBoolean isSurfaceProducer;
-
-    /* The refCount is initialized to 1 during EGLSurface creation,
-     * gets incremented/decrementsd in wlEglSurfaceRef()/wlEglSurfaceUnref(),
-     * when we enter/exit from eglSwapBuffers().
-     */
-    unsigned int refCount;
-    /*
-     * Set to EGL_TRUE before destroying the EGLSurface in eglDestroySurface().
-     */
-    EGLBoolean isDestroyed;
-
-    /* The lock is used to serialize eglSwapBuffers()/eglDestroySurface(),
-     * Using wlExternalApiLock() for this requires that we release lock
-     * before dispatching frame sync events in wlEglWaitFrameSync().
-     */
-    pthread_mutex_t mutexLock;
-
-    /* We want to delay the resizing of the window surface until the next
-     * eglSwapBuffers(), so just set a resize flag.
-     */
-    EGLBoolean isResized;
-
-    /* True when the EGL_PRESENT_OPAQUE_EXT surface attrib is set by the app */
-    EGLBoolean presentOpaque;
-} WlEglSurface;
+typedef struct WlEglSurfaceRec WlEglSurface;
 
 WL_EXPORT
-EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface);
+EGLStreamKHR wlEglGetSurfaceStreamExport(WlEglSurface *surface);
 
-void wlEglResizeSurfaceIfRequired(WlEglDisplay *display,
-                                  WlEglPlatformData *pData,
-                                  WlEglSurface *surface);
-
-EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
-                                                EGLConfig config,
-                                                void *nativeWin,
-                                                const EGLAttrib *attribs);
-EGLSurface wlEglCreatePlatformPixmapSurfaceHook(EGLDisplay dpy,
-                                                EGLConfig config,
-                                                void *nativePixmap,
-                                                const EGLAttrib *attribs);
-EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
-                                         EGLConfig config,
-                                         const EGLint *attribs);
-EGLSurface wlEglCreateStreamProducerSurfaceHook(EGLDisplay dpy,
-                                                EGLConfig config,
-                                                EGLStreamKHR stream,
-                                                const EGLint *attribs);
-EGLBoolean wlEglDestroySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface);
-EGLBoolean wlEglDestroyAllSurfaces(WlEglDisplay *display);
-
-EGLBoolean wlEglIsWaylandWindowValid(struct wl_egl_window *window);
-EGLBoolean wlEglIsWlEglSurfaceForDisplay(WlEglDisplay *display, WlEglSurface *wlEglSurface);
-
-EGLBoolean wlEglQuerySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface, EGLint attribute, EGLint *value);
-
-EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
-                                        void *nativeResource,
-                                        EGLint attribute,
-                                        int *value);
-
-EGLBoolean wlEglSendDamageEvent(WlEglSurface *surface,
-                                struct wl_event_queue *queue);
-
-void wlEglCreateFrameSync(WlEglSurface *surface);
-EGLint wlEglWaitFrameSync(WlEglSurface *surface);
-
-EGLBoolean wlEglSurfaceRef(WlEglDisplay *display, WlEglSurface *surface);
-void wlEglSurfaceUnref(WlEglSurface *surface);
-
-EGLint wlEglHandleImageStreamEvents(WlEglSurface *surface);
+WL_EXPORT
+WlEglSurface *wlEglInitializeSurfaceExport(EGLDisplay dpy,
+                                           int width,
+                                           int height,
+                                           struct wl_surface *native_surface,
+                                           int fifo_length);
 
 #ifdef __cplusplus
 }
