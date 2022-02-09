@@ -127,22 +127,6 @@ void wlEglCreateFrameSync(WlEglSurface *surface)
                                      &throttle_listener, surface) == -1) {
             return;
         }
-
-        /* After a window resize, the compositor has to be
-         * updated with the new buffer's geometry. However, we
-         * won't have updated geometry information until the
-         * underlying buffer is attached. A surface attach
-         * may be deferred to a later time in some situations
-         * (e.g. FIFO_SYNCHRONOUS + damage thread).
-         *
-         * Therefore, the surface_commit done from here would
-         * use outdated geometry information if the buffer is
-         * not attached, which would make xdg-shell fail with
-         * error. To avoid this, skip the surface commit here
-         * if the surface attach is not yet done. */
-        if (surface->ctx.isAttached) {
-            wl_surface_commit(surface->wlSurface);
-        }
     }
 }
 
@@ -258,9 +242,18 @@ damage_thread(void *args)
                     data->egl.streamFlush(display->devDpy->eglDisplay,
                                           surface->ctx.eglStream);
                 }
+
+                pthread_mutex_lock(&surface->mutexFrameSync);
+
+                wlEglCreateFrameSync(surface);
+
                 ok = wlEglSendDamageEvent(surface, queue);
                 surface->ctx.framesProcessed++;
-             }
+
+                pthread_cond_signal(&surface->condFrameSync);
+
+                pthread_mutex_unlock(&surface->mutexFrameSync);
+            }
 
             // Otherwise, wait for sync to trigger
             else {
@@ -1577,6 +1570,18 @@ WlEglSurface *wlEglInitializeSurfaceExport(EGLDisplay dpy,
         goto fail;
     }
 
+    if (!wlEglInitializeMutex(&surface->mutexFrameSync)) {
+        pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
+        return EGL_FALSE;
+    }
+
+    if (pthread_cond_init(&surface->condFrameSync, NULL)) {
+        pthread_mutex_unlock(&display->mutex);
+        wlEglReleaseDisplay(display);
+        return EGL_FALSE;
+    }
+
     if (create_surface_context(surface) != EGL_SUCCESS) {
         wl_event_queue_destroy(surface->wlEventQueue);
         goto fail;
@@ -1816,6 +1821,11 @@ void wlEglSurfaceUnref(WlEglSurface *surface)
 
     wlEglMutexDestroy(&surface->mutexLock);
 
+    if (!surface->ctx.isOffscreen) {
+        wlEglMutexDestroy(&surface->mutexFrameSync);
+        pthread_cond_destroy(&surface->condFrameSync);
+    }
+
     for (i = 0; i < surface->ctx.numStreamImages; i++) {
         wlEglMutexDestroy(&surface->ctx.streamImages[i]->mutex);
         free(surface->ctx.streamImages[i]);
@@ -2013,6 +2023,17 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
         err = EGL_BAD_ALLOC;
         goto fail;
     }
+
+    if (!wlEglInitializeMutex(&surface->mutexFrameSync)) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    if (pthread_cond_init(&surface->condFrameSync, NULL)) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
 
     surface->wlEglDpy = display;
     surface->eglConfig = config;

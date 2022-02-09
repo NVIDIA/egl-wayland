@@ -99,6 +99,16 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
             goto fail_locked;
         }
 
+        if (surface->ctx.useDamageThread) {
+            pthread_mutex_lock(&surface->mutexFrameSync);
+            // Wait for damage thread to submit the
+            // previous frame and generate frame sync
+            while (surface->ctx.framesProduced != surface->ctx.framesProcessed) {
+                pthread_cond_wait(&surface->condFrameSync, &surface->mutexFrameSync);
+            }
+            pthread_mutex_unlock(&surface->mutexFrameSync);
+        }
+
         wlEglWaitFrameSync(surface);
     }
 
@@ -127,10 +137,10 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         if (surface->ctx.useDamageThread) {
             surface->ctx.framesProduced++;
         } else {
+            wlEglCreateFrameSync(surface);
             res = wlEglSendDamageEvent(surface, surface->wlEventQueue);
         }
     }
-    wlEglCreateFrameSync(surface);
 
 done:
     // Release wlEglSurface lock.
@@ -257,6 +267,16 @@ EGLBoolean wlEglPrePresentExport(WlEglSurface *surface) {
     // Acquire wlEglSurface lock.
     pthread_mutex_lock(&surface->mutexLock);
 
+    if (surface->ctx.useDamageThread) {
+        pthread_mutex_lock(&surface->mutexFrameSync);
+        // Wait for damage thread to submit the
+        // previous frame and generate frame sync
+        while (surface->ctx.framesProduced != surface->ctx.framesProcessed) {
+            pthread_cond_wait(&surface->condFrameSync, &surface->mutexFrameSync);
+        }
+        pthread_mutex_unlock(&surface->mutexFrameSync);
+    }
+
     wlEglWaitFrameSync(surface);
 
     // Release wlEglSurface lock.
@@ -289,10 +309,9 @@ EGLBoolean wlEglPostPresentExport(WlEglSurface *surface) {
     if (surface->ctx.useDamageThread) {
         surface->ctx.framesProduced++;
     } else {
+        wlEglCreateFrameSync(surface);
         res = wlEglSendDamageEvent(surface, surface->wlEventQueue);
     }
-
-    wlEglCreateFrameSync(surface);
 
     // Release wlEglSurface lock.
     pthread_mutex_unlock(&surface->mutexLock);

@@ -133,6 +133,13 @@ struct WlEglSurfaceRec {
     /* True when the EGL_PRESENT_OPAQUE_EXT surface attrib is set by the app */
     EGLBoolean presentOpaque;
 
+    /* This pair of mutex and conditional variable is used
+     * for sychronization between eglSwapBuffers() and damage
+     * thread on creating frame sync and waiting for it.
+     */
+    pthread_mutex_t mutexFrameSync;
+    pthread_cond_t condFrameSync;
+
     /* We want to delay the resizing of the window surface until the next
      * eglSwapBuffers(), so just set a resize flag.
      */
