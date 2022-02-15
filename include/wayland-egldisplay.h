@@ -91,6 +91,8 @@ typedef struct WlEglDisplayRec {
 
     WlEglDmaBufFormat *dmaBufFormats;
     uint32_t numFormats;
+
+    EGLBoolean primeRenderOffload;
 } WlEglDisplay;
 
 typedef struct WlEventQueueRec {

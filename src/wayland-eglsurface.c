@@ -1264,6 +1264,9 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
         EGL_NONE,                   EGL_NONE,
         EGL_NONE
     };
+    /* EGLImage stream consumer will be configured with linear modifier
+     * if __NV_PRIME_RENDER_OFFLOAD was set during initialization. */
+    uint64_t linearModifier = DRM_FORMAT_MOD_LINEAR;
     EGLint err = EGL_SUCCESS;
 
     /* We don't have any mechanism to check whether the compositor is going to
@@ -1291,8 +1294,8 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     /* Now create the local EGLImage consumer */
     if (!data->egl.streamImageConsumerConnect(dpy,
                                               surface->ctx.eglStream,
-                                              0, /* XXX modifier count */
-                                              NULL, /* XXX modifier list */
+                                              display->primeRenderOffload ? 1 : 0,
+                                              &linearModifier,
                                               NULL)) {
         err = data->egl.getError();
         goto fail;
