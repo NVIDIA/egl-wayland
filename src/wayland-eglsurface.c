@@ -1538,11 +1538,11 @@ EGLStreamKHR wlEglGetSurfaceStreamExport(WlEglSurface *surface)
 }
 
 WL_EXPORT
-WlEglSurface *wlEglInitializeSurfaceExport(EGLDisplay dpy,
-                                           int width,
-                                           int height,
-                                           struct wl_surface *native_surface,
-                                           int fifo_length)
+WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
+                                       int width,
+                                       int height,
+                                       struct wl_surface *native_surface,
+                                       int fifo_length)
 {
     WlEglDisplay *display = (WlEglDisplay *)wlEglAcquireDisplay(dpy);
     WlEglSurface *surface = NULL;
