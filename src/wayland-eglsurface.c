@@ -161,9 +161,13 @@ EGLint wlEglWaitFrameSync(WlEglSurface *surface)
 }
 
 EGLBoolean
-wlEglSendDamageEvent(WlEglSurface *surface, struct wl_event_queue *queue)
+wlEglSendDamageEvent(WlEglSurface *surface,
+                     struct wl_event_queue *queue,
+                     EGLint *rects,
+                     EGLint n_rects)
 {
     struct wl_display *wlDpy = surface->wlEglDpy->nativeDpy;
+    EGLint i;
 
     if (surface->ctx.wlStreamResource) {
         /* Attach same buffer to indicate new content for the surface is
@@ -191,8 +195,21 @@ wlEglSendDamageEvent(WlEglSurface *surface, struct wl_event_queue *queue)
                           surface->dy);
     }
 
-    wl_surface_damage(surface->wlSurface, 0, 0,
-                      surface->width, surface->height);
+    if (n_rects > 0 &&
+        (wl_proxy_get_version((struct wl_proxy *)surface->wlSurface) >=
+         WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION)) {
+        for (i = 0; i < n_rects; i++) {
+            int y = rects[i*4+1] + rects[i*4+3];
+            wl_surface_damage_buffer(surface->wlSurface,
+                                     rects[i*4],
+                                     surface->height - y,
+                                     rects[i*4+2],
+                                     rects[i*4+3]);
+        }
+    } else {
+        wl_surface_damage(surface->wlSurface, 0, 0, UINT32_MAX, UINT32_MAX);
+    }
+
     wl_surface_commit(surface->wlSurface);
     surface->ctx.isAttached = EGL_TRUE;
 
@@ -257,7 +274,7 @@ damage_thread(void *args)
                     data->egl.streamFlush(display->devDpy->eglDisplay,
                                           surface->ctx.eglStream);
                 }
-                ok = wlEglSendDamageEvent(surface, queue);
+                ok = wlEglSendDamageEvent(surface, queue, NULL, 0);
                 surface->ctx.framesProcessed++;
              }
 
