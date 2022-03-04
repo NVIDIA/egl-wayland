@@ -123,6 +123,12 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
 
     if (res) {
         if (surface->ctx.useDamageThread) {
+            /* Failure due to a full ring-buffer results in a full-surface
+             * composition by the damage thread.
+             */
+            wlEglPutStreamDamage(&surface->ctx.damageBuffer,
+                                 surface->ctx.framesProduced,
+                                 rects, n_rects);
             surface->ctx.framesProduced++;
         } else {
             res = wlEglSendDamageEvent(surface, surface->wlEventQueue, rects, n_rects);

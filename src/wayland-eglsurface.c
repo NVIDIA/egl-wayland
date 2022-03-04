@@ -40,6 +40,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
+#include <stdatomic.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
@@ -268,13 +269,20 @@ damage_thread(void *args)
         if (ok) {
 
             // If there's an unprocessed frame ready, send damage event
-            if (surface->ctx.framesFinished !=
-                surface->ctx.framesProcessed) {
+            if (surface->ctx.framesFinished != surface->ctx.framesProcessed) {
+                WlEglStreamDamage damage;
+
                 if (display->devDpy->exts.stream_flush) {
                     data->egl.streamFlush(display->devDpy->eglDisplay,
                                           surface->ctx.eglStream);
                 }
-                ok = wlEglSendDamageEvent(surface, queue, NULL, 0);
+
+                if (wlEglGetStreamDamageForFrame(&surface->ctx.damageBuffer, surface->ctx.framesProcessed, &damage)) {
+                    ok = wlEglSendDamageEvent(surface, queue, damage.rects, damage.n_rects);
+                } else {
+                    ok = wlEglSendDamageEvent(surface, queue, NULL, 0);
+                }
+
                 surface->ctx.framesProcessed++;
              }
 
@@ -2222,4 +2230,85 @@ EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
 done:
     wlExternalApiUnlock();
     return res;
+}
+
+void
+wlEglInitializeStreamDamageBuffer(WlEglStreamDamageBuffer *buffer)
+{
+    memset (buffer, 0, sizeof *buffer);
+}
+
+EGLBoolean
+wlEglGetStreamDamageForFrame(WlEglStreamDamageBuffer *buffer,
+                             EGLuint64KHR frameNumber,
+                             WlEglStreamDamage *damage)
+{
+    EGLint tail = buffer->tail;
+
+    atomic_thread_fence (memory_order_acquire);
+
+    for (;;) {
+        if (buffer->head == tail) {
+            return EGL_FALSE;
+        }
+
+        if (buffer->frames[tail].frameNumber > frameNumber) {
+            /* We must have dropped our desired frame damage on the floor
+             * because there was not space or it had too many rectangles.
+             */
+            return EGL_FALSE;
+        }
+
+        /* Avoid copying empty rectangles */
+        memcpy (damage, &buffer->frames[tail],
+                offsetof (WlEglStreamDamage, rects) + buffer->frames[tail].n_rects * sizeof(EGLint) * 4);
+
+        tail++;
+        if (tail == WL_EGL_STREAM_DAMAGE_BUFFER_N_FRAMES) {
+            tail = 0;
+        }
+
+        atomic_thread_fence (memory_order_release);
+
+        buffer->tail = tail;
+
+        if (damage->frameNumber == frameNumber) {
+            return EGL_TRUE;
+        }
+    }
+
+    /* Not reached */
+}
+
+EGLBoolean
+wlEglPutStreamDamage(WlEglStreamDamageBuffer *buffer,
+                     EGLuint64KHR frameNumber,
+                     EGLint *rects,
+                     EGLint n_rects)
+{
+    EGLint head = buffer->head + 1;
+
+    if (n_rects == 0 || n_rects > WL_EGL_STREAM_DAMAGE_BUFFER_N_RECTS) {
+        return EGL_FALSE;
+    }
+
+    if (head == WL_EGL_STREAM_DAMAGE_BUFFER_N_FRAMES) {
+        head = 0;
+    }
+
+    atomic_thread_fence (memory_order_acquire);
+
+    if (head != buffer->tail) {
+        buffer->frames[buffer->head].frameNumber = frameNumber;
+        buffer->frames[buffer->head].n_rects = n_rects;
+        memcpy (buffer->frames[buffer->head].rects, rects, sizeof (EGLint) * 4 * n_rects);
+
+        atomic_thread_fence (memory_order_release);
+
+        buffer->head = head;
+
+        return EGL_TRUE;
+    }
+
+    return EGL_FALSE;
 }
