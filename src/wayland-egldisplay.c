@@ -590,17 +590,16 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         !strcmp(primeRenderOffloadStr, "1");
 
     /*
-     * Now we need to find an EGLDevice. If wl_drm is in use we will try to find one that
-     * matches the device the compositor is using. We know that device is an nvidia device
-     * since we just checked that above.
+     * Now we need to find an EGLDevice. If __NV_PRIME_RENDER_OFFLOAD=1, we will use the
+     * first NVIDIA GPU returned by eglQueryDevices. Otherwise, if wl_drm is in use, we will
+     * try to find one that matches the device the compositor is using. We know that device
+     * is an nvidia device since we just checked that above.
      */
     if (!pData->egl.queryDevices(numDevices, eglDeviceList, &numDevices) || numDevices == 0) {
         goto fail_cleanup_devices;
     }
 
     if (display->primeRenderOffload) {
-        /* For PRIME render-offload, we don't care which device the compositor
-         * is using, we just use the first NVIDIA device we find. */
         eglDevice = eglDeviceList[0];
     } else if (protocols.drm_name) {
         for (int i = 0; i < numDevices; i++) {
