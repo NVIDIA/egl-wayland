@@ -1776,6 +1776,7 @@ EGLBoolean wlEglQuerySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface,
     WlEglPlatformData *data     = NULL;
     WlEglSurface *surface       = (WlEglSurface *)eglSurface;
     EGLint ret                  = EGL_FALSE;
+    EGLint err                  = EGL_SUCCESS;
 
     if (!display) {
         return EGL_FALSE;
@@ -1783,6 +1784,8 @@ EGLBoolean wlEglQuerySurfaceHook(EGLDisplay dpy, EGLSurface eglSurface,
     data = display->data;
 
     if (!wlEglIsWlEglSurfaceForDisplay(display, surface)) {
+        err = EGL_BAD_SURFACE;
+        wlEglSetError(data, err);
         goto done;
     }
 
