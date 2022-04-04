@@ -128,10 +128,19 @@ typedef struct WlEglSurfaceRec {
      * before dispatching frame sync events in wlEglWaitFrameSync().
      */
     pthread_mutex_t mutexLock;
+
+    /* We want to delay the resizing of the window surface until the next
+     * eglSwapBuffers(), so just set a resize flag.
+     */
+    EGLBoolean isResized;
 } WlEglSurface;
 
 WL_EXPORT
 EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface);
+
+void wlEglResizeSurfaceIfRequired(WlEglDisplay *display,
+                                  WlEglPlatformData *pData,
+                                  WlEglSurface *surface);
 
 EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
                                                 EGLConfig config,
