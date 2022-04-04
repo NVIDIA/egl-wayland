@@ -1555,37 +1555,25 @@ EGLBoolean wlEglInitializeSurfaceExport(WlEglSurface *surface)
     return EGL_TRUE;
 }
 
-static void
-resize_callback(struct wl_egl_window *window, void *data)
+void
+wlEglResizeSurfaceIfRequired(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurface *surface)
 {
-    WlEglDisplay      *display = NULL;
-    WlEglPlatformData *pData   = NULL;
-    WlEglSurface      *surface = (WlEglSurface *)data;
     EGLint             err     = EGL_SUCCESS;
 
-    if (!window || !surface) {
+    if (!surface) {
         return;
     }
-
-    display = surface->wlEglDpy;
-    if (!wlEglIsWaylandDisplay(display->nativeDpy) ||
-        !wlEglIsWaylandWindowValid(surface->wlEglWin)) {
-        return;
-    }
-    pData = display->data;
 
     pthread_mutex_lock(&surface->mutexLock);
 
     /* Resize stream only if window geometry has changed */
-    if ((surface->width != window->width) ||
-        (surface->height != window->height) ||
-        (surface->dx != window->dx) ||
-        (surface->dy != window->dy)) {
+    if (surface->isResized) {
         // If a damage thread is in use, wait for it to finish processing all
         //   pending frames
         finish_wl_eglstream_damage_thread(surface, &surface->ctx, 0);
 
         discard_surface_context(surface);
+        surface->isResized = EGL_FALSE;
         surface->ctx.wlStreamResource = NULL;
         surface->ctx.isAttached = EGL_FALSE;
         surface->ctx.eglSurface = EGL_NO_SURFACE;
@@ -1608,6 +1596,36 @@ resize_callback(struct wl_egl_window *window, void *data)
             }
         }
     }
+    pthread_mutex_unlock(&surface->mutexLock);
+}
+
+static void
+resize_callback(struct wl_egl_window *window, void *data)
+{
+    WlEglDisplay      *display = NULL;
+    WlEglSurface      *surface = (WlEglSurface *)data;
+
+    if (!window || !surface) {
+        return;
+    }
+
+    display = surface->wlEglDpy;
+    if (!wlEglIsWaylandDisplay(display->nativeDpy) ||
+        !wlEglIsWaylandWindowValid(surface->wlEglWin)) {
+        return;
+    }
+
+    pthread_mutex_lock(&surface->mutexLock);
+
+    /* Resize stream only if window geometry has changed */
+    if ((surface->width != window->width) ||
+        (surface->height != window->height) ||
+        (surface->dx != window->dx) ||
+        (surface->dy != window->dy)) {
+            surface->isResized = EGL_TRUE;
+            wl_surface_commit(surface->wlSurface);
+    }
+    
     pthread_mutex_unlock(&surface->mutexLock);
 }
 
