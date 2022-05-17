@@ -34,6 +34,9 @@
 extern "C" {
 #endif
 
+#define WL_EGL_STREAM_DAMAGE_BUFFER_N_FRAMES 3
+#define WL_EGL_STREAM_DAMAGE_BUFFER_N_RECTS  32
+
 typedef struct WlEglStreamImageRec {
     /* Pointer back to the parent surface for use in Wayland callbacks */
     struct WlEglSurfaceRec *surface;
@@ -51,6 +54,19 @@ typedef struct WlEglStreamImageRec {
     EGLBoolean              attached;
     struct wl_list          acquiredLink;
 } WlEglStreamImage;
+
+typedef struct WlEglStreamDamageRec {
+    EGLuint64KHR frameNumber;
+    EGLint       n_rects;
+    EGLint       _padding;
+    EGLint       rects[4 * WL_EGL_STREAM_DAMAGE_BUFFER_N_RECTS];
+} WlEglStreamDamage;
+
+typedef struct WlEglStreamDamageBufferRec {
+    volatile EGLint   head;
+    volatile EGLint   tail;
+    WlEglStreamDamage frames[WL_EGL_STREAM_DAMAGE_BUFFER_N_FRAMES];
+} WlEglStreamDamageBuffer;
 
 typedef struct WlEglSurfaceCtxRec {
     EGLBoolean              isOffscreen;
@@ -79,6 +95,8 @@ typedef struct WlEglSurfaceCtxRec {
     uint32_t                numStreamImages;
 
     struct wl_list link;
+
+    WlEglStreamDamageBuffer damageBuffer;
 } WlEglSurfaceCtx;
 
 typedef struct WlEglSurfaceRec {
@@ -169,7 +187,18 @@ EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
                                         int *value);
 
 EGLBoolean wlEglSendDamageEvent(WlEglSurface *surface,
-                                struct wl_event_queue *queue);
+                                struct wl_event_queue *queue,
+                                EGLint *rects,
+                                EGLint n_rects);
+
+void wlEglInitializeStreamDamageBuffer(WlEglStreamDamageBuffer *buffer);
+EGLBoolean wlEglPutStreamDamage(WlEglStreamDamageBuffer *buffer,
+                                EGLuint64KHR frameNumber,
+                                EGLint *rects,
+                                EGLint n_rects);
+EGLBoolean wlEglGetStreamDamageForFrame(WlEglStreamDamageBuffer *buffer,
+                                        EGLuint64KHR frameNumber,
+                                        WlEglStreamDamage *damage);
 
 void wlEglCreateFrameSync(WlEglSurface *surface);
 EGLint wlEglWaitFrameSync(WlEglSurface *surface);
