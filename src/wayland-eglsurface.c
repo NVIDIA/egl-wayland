@@ -1616,7 +1616,9 @@ fail:
 void
 wlEglResizeSurfaceIfRequired(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurface *surface)
 {
-    EGLint             err     = EGL_SUCCESS;
+    EGLint             err             = EGL_SUCCESS;
+    WlEglSurface       *readSurface    = surface;
+    WlEglSurface       *drawSurface    = surface;
 
     if (!surface) {
         return;
@@ -1626,6 +1628,8 @@ wlEglResizeSurfaceIfRequired(WlEglDisplay *display, WlEglPlatformData *pData, Wl
 
     /* Resize stream only if window geometry has changed */
     if (surface->isResized) {
+        readSurface = (WlEglSurface *)pData->egl.getCurrentSurface(EGL_READ);
+        drawSurface = (WlEglSurface *)pData->egl.getCurrentSurface(EGL_DRAW);
         // If a damage thread is in use, wait for it to finish processing all
         //   pending frames
         finish_wl_eglstream_damage_thread(surface, &surface->ctx, 0);
@@ -1642,8 +1646,8 @@ wlEglResizeSurfaceIfRequired(WlEglDisplay *display, WlEglPlatformData *pData, Wl
         err = create_surface_context(surface);
         if (err == EGL_SUCCESS) {
             pData->egl.makeCurrent(display,
-                                   surface,
-                                   surface,
+                                   readSurface,
+                                   drawSurface,
                                    pData->egl.getCurrentContext());
 
             if (surface->ctx.wlStreamResource) {
@@ -1662,12 +1666,14 @@ resize_callback(struct wl_egl_window *window, void *data)
 {
     WlEglDisplay      *display = NULL;
     WlEglSurface      *surface = (WlEglSurface *)data;
+    WlEglPlatformData *pData     = NULL;
 
     if (!window || !surface) {
         return;
     }
 
     display = surface->wlEglDpy;
+    pData = display->data;
     if (!wlEglIsWaylandDisplay(display->nativeDpy) ||
         !wlEglIsWaylandWindowValid(surface->wlEglWin)) {
         return;
@@ -1685,6 +1691,12 @@ resize_callback(struct wl_egl_window *window, void *data)
     }
     
     pthread_mutex_unlock(&surface->mutexLock);
+
+    /* If the surface is bound on this thread, update it immediately. */
+    if ((pData->egl.getCurrentSurface(EGL_DRAW) == surface) ||
+        (pData->egl.getCurrentSurface(EGL_READ) == surface)) {
+        wlEglResizeSurfaceIfRequired(display, pData, surface);
+    }
 }
 
 static EGLBoolean validateSurfaceAttrib(EGLAttrib attrib, EGLAttrib value)
