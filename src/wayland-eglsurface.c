@@ -492,7 +492,6 @@ destroy_surface_context(WlEglSurface *surface, WlEglSurfaceCtx *ctx)
     uint32_t           i;
 
     finish_wl_eglstream_damage_thread(surface, ctx, 1);
-    finish_wl_buffer_release_thread(surface);
 
     ctx->eglSurface       = EGL_NO_SURFACE;
     ctx->eglStream        = EGL_NO_STREAM_KHR;
@@ -1527,6 +1526,7 @@ create_surface_context(WlEglSurface *surface)
 
 fail:
     destroy_surface_context(surface, &surface->ctx);
+    finish_wl_buffer_release_thread(surface);
     return err;
 }
 
