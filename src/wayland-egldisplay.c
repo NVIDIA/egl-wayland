@@ -488,17 +488,17 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 {
     WlEglPlatformData     *pData           = (WlEglPlatformData *)data;
     WlEglDisplay          *display         = NULL;
-    WlServerProtocols      protocols;
+    WlServerProtocols      protocols       = {};
     EGLint                 numDevices      = 0;
     int                    i               = 0;
     EGLDeviceEXT          *eglDeviceList   = NULL;
     EGLDeviceEXT           eglDevice       = NULL;
-    EGLDeviceEXT           tmpDev          = NULL;
     EGLint                 err             = EGL_SUCCESS;
     EGLBoolean             useInitRefCount = EGL_FALSE;
-    const char *dev_exts;
-    const char *dev_name;
     const char *primeRenderOffloadStr;
+    EGLDeviceEXT serverDevice = EGL_NO_DEVICE_EXT;
+    EGLDeviceEXT requestedDevice = EGL_NO_DEVICE_EXT;
+    EGLBoolean usePrimeRenderOffload = EGL_FALSE;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -515,6 +515,12 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                     useInitRefCount = (EGLBoolean) attribs[i + 1];
                 } else {
                     wlEglSetError(data, EGL_BAD_ATTRIBUTE);
+                    return EGL_NO_DISPLAY;
+                }
+            } else if (attribs[i] == EGL_DEVICE_EXT) {
+                requestedDevice = (EGLDeviceEXT) attribs[i + 1];
+                if (requestedDevice == EGL_NO_DEVICE_EXT) {
+                    wlEglSetError(data, EGL_BAD_DEVICE_EXT);
                     return EGL_NO_DISPLAY;
                 }
             } else {
@@ -563,7 +569,6 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         wl_display_dispatch_pending(display->nativeDpy);
     }
 
-    memset(&protocols, 0, sizeof(protocols));
     /*
      * This is where we check the supported protocols on the compositor,
      * and bind to wl_drm to get the device name.
@@ -572,22 +577,18 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     getServerProtocolsInfo(display->nativeDpy, &protocols);
 
     if (!protocols.hasDrm || (!protocols.hasEglStream && !protocols.hasDmaBuf)) {
-        goto fail_cleanup_protocols;
+        goto fail;
     }
 
     /* Get the number of devices available */
     if (!pData->egl.queryDevices(-1, NULL, &numDevices) || numDevices == 0) {
-        goto fail_cleanup_protocols;
+        goto fail;
     }
 
     eglDeviceList = calloc(numDevices, sizeof(*eglDeviceList));
     if (!eglDeviceList) {
-        goto fail_cleanup_protocols;
+        goto fail;
     }
-
-    primeRenderOffloadStr = getenv("__NV_PRIME_RENDER_OFFLOAD");
-    display->primeRenderOffload = primeRenderOffloadStr &&
-        !strcmp(primeRenderOffloadStr, "1");
 
     /*
      * Now we need to find an EGLDevice. If __NV_PRIME_RENDER_OFFLOAD=1, we will use the
@@ -596,60 +597,108 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
      * is an nvidia device since we just checked that above.
      */
     if (!pData->egl.queryDevices(numDevices, eglDeviceList, &numDevices) || numDevices == 0) {
-        goto fail_cleanup_devices;
+        goto fail;
     }
 
-    if (display->primeRenderOffload) {
-        eglDevice = eglDeviceList[0];
-    } else if (protocols.drm_name) {
-        for (int i = 0; i < numDevices; i++) {
-            tmpDev = eglDeviceList[i];
+    primeRenderOffloadStr = getenv("__NV_PRIME_RENDER_OFFLOAD");
+    if (primeRenderOffloadStr && !strcmp(primeRenderOffloadStr, "1")) {
+        usePrimeRenderOffload = EGL_TRUE;
+    }
+
+    // Try to find the device that the compositor is running on.
+    if (protocols.drm_name) {
+        for (i = 0; i < numDevices; i++) {
+            EGLDeviceEXT tmpDev = eglDeviceList[i];
 
             /*
              * To check against the wl_drm name, we need to check if we can use
              * the drm extension
              */
-            dev_exts = display->data->egl.queryDeviceString(tmpDev,
+            const char *dev_exts = display->data->egl.queryDeviceString(tmpDev,
                     EGL_EXTENSIONS);
-            if (dev_exts) {
-                if (wlEglFindExtension("EGL_EXT_device_drm_render_node", dev_exts)) {
-                    dev_name =
-                        display->data->egl.queryDeviceString(tmpDev,
-                                EGL_DRM_RENDER_NODE_FILE_EXT);
+            if (dev_exts && wlEglFindExtension("EGL_EXT_device_drm_render_node", dev_exts)) {
+                const char *dev_name = display->data->egl.queryDeviceString(tmpDev,
+                            EGL_DRM_RENDER_NODE_FILE_EXT);
 
-                    if (dev_name) {
-                        /*
-                         * At this point we have gotten the name from wl_drm, gotten
-                         * the drm node from the EGLDevice. If they match, then
-                         * this is the final device to use, since it is the compositor's
-                         * device.
-                         */
-                        if (strcmp(dev_name, protocols.drm_name) == 0) {
-                            eglDevice = eglDeviceList[0];
-                            break;
-                        }
+                if (dev_name) {
+                    /*
+                     * At this point we have gotten the name from wl_drm, gotten
+                     * the drm node from the EGLDevice. If they match, then
+                     * this is the final device to use, since it is the compositor's
+                     * device.
+                     */
+                    if (strcmp(dev_name, protocols.drm_name) == 0) {
+                        serverDevice = tmpDev;
+                        break;
                     }
                 }
             }
         }
     }
 
-    /*
-     * Right now we are pretty much limited to running on the same GPU as the
-     * compositor. If we couldn't find an EGLDevice that has EGL_EXT_device_drm_render_node
-     * and the same DRM device path, then fail.
-     */
-    if (!eglDevice) {
-        goto fail_cleanup_devices;
+    // By default, use whatever device the server is using.
+    eglDevice = serverDevice;
+
+    if (requestedDevice != EGL_NO_DEVICE_EXT) {
+        // If the app requested a specific device, then use it.
+        // Make sure that the requested device is a valid EGLDeviceEXT handle.
+        EGLBoolean found = EGL_FALSE;
+        for (i = 0; i < numDevices; i++) {
+            if (eglDeviceList[i] == requestedDevice) {
+                found = EGL_TRUE;
+                break;
+            }
+        }
+        if (found) {
+            eglDevice = requestedDevice;
+        } else if (!usePrimeRenderOffload) {
+            /*
+             * The EGL_DEVICE_EXT attribute doesn't match any NVIDIA device,
+             * but it might match a non-NV device. If the user requested GPU
+             * offloading, then we'll pick an NVIDIA device below. Otherwise,
+             * fail here so that another driver can handle it.
+             *
+             * We'll generate an EGL_BAD_MATCH error in this case --
+             * technically, it should be EGL_BAD_DEVICE_EXT if the device is
+             * not valid, or EGL_BAD_MATCH if the device is valid but we can't
+             * use it. We have no way to know if this is a valid device from
+             * Mesa, though, but assume that it is so that a non-buggy
+             * application can get useful feedback.
+             */
+            err = EGL_BAD_MATCH;
+            goto fail;
+        }
     }
+
+    if (eglDevice == EGL_NO_DEVICE_EXT && usePrimeRenderOffload) {
+        /*
+         * If __NV_PRIME_RENDER_OFFLOAD is set, then use an NVIDIA device. It
+         * doesn't matter which one.
+         */
+        eglDevice = eglDeviceList[0];
+    }
+
+    if (eglDevice == EGL_NO_DEVICE_EXT) {
+        // If we couldn't find a device to render on, then fail.
+        goto fail;
+    }
+
+    if (eglDevice != serverDevice) {
+        /*
+         * If we're rendering with a different device than the compositor is
+         * using, then we'll need to use the PRIME offloading path.
+         */
+        display->primeRenderOffload = EGL_TRUE;
+    }
+
 
     display->devDpy = wlGetInternalDisplay(pData, eglDevice);
     if (display->devDpy == NULL) {
-        goto fail_cleanup_devices;
+        goto fail;
     }
 
     if (!wlEglInitializeMutex(&display->mutex)) {
-        goto fail_cleanup_devices;
+        goto fail;
     }
     display->refCount = 1;
     WL_LIST_INIT(&display->wlEglSurfaceList);
@@ -666,14 +715,11 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     wlExternalApiUnlock();
     return display;
 
-fail_cleanup_devices:
-    free(eglDeviceList);
-fail_cleanup_protocols:
-    if (protocols.drm_name) {
-        free(protocols.drm_name);
-    }
 fail:
     wlExternalApiUnlock();
+
+    free(eglDeviceList);
+    free(protocols.drm_name);
 
     if (display->ownNativeDpy) {
         wl_display_disconnect(display->nativeDpy);
@@ -1028,7 +1074,7 @@ const char* wlEglQueryStringExport(void *data,
 
     switch (name) {
     case EGL_EXT_PLATFORM_PLATFORM_CLIENT_EXTENSIONS:
-        res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+        res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland EGL_EXT_explicit_device" :
                         "EGL_EXT_platform_wayland";
         break;
 
@@ -1036,7 +1082,7 @@ const char* wlEglQueryStringExport(void *data,
         if (dpy == EGL_NO_DISPLAY) {
             /* This should return all client extensions, which for now is
              * equivalent to EXTERNAL_PLATFORM_CLIENT_EXTENSIONS */
-            res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland" :
+            res = isEGL15 ? "EGL_KHR_platform_wayland EGL_EXT_platform_wayland EGL_EXT_explicit_device" :
                             "EGL_EXT_platform_wayland";
         } else {
             /*
