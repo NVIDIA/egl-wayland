@@ -1614,53 +1614,48 @@ fail:
 }
 
 void
-wlEglResizeSurfaceIfRequired(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurface *surface)
+wlEglResizeSurface(WlEglDisplay *display,
+                   WlEglPlatformData *pData,
+                   WlEglSurface *surface)
 {
-    EGLint             err     = EGL_SUCCESS;
+    EGLint err = EGL_SUCCESS;
 
-    if (!surface) {
-        return;
-    }
+    // If a damage thread is in use, wait for it to finish processing all
+    //   pending frames
+    finish_wl_eglstream_damage_thread(surface, &surface->ctx, 0);
 
-    pthread_mutex_lock(&surface->mutexLock);
+    discard_surface_context(surface);
+    surface->isResized = EGL_FALSE;
+    surface->ctx.wlStreamResource = NULL;
+    surface->ctx.isAttached = EGL_FALSE;
+    surface->ctx.eglSurface = EGL_NO_SURFACE;
+    surface->ctx.eglStream = EGL_NO_STREAM_KHR;
+    surface->ctx.damageThreadSync = EGL_NO_SYNC_KHR;
+    surface->ctx.damageThreadId = (pthread_t)0;
 
-    /* Resize stream only if window geometry has changed */
-    if (surface->isResized) {
-        // If a damage thread is in use, wait for it to finish processing all
-        //   pending frames
-        finish_wl_eglstream_damage_thread(surface, &surface->ctx, 0);
+    err = create_surface_context(surface);
+    if (err == EGL_SUCCESS) {
+        /* This looks like a no-op, but we've replaced the surface's internal
+         * handle with a new surface, so we need to make it current again. */
+        pData->egl.makeCurrent(display,
+                               pData->egl.getCurrentSurface(EGL_DRAW),
+                               pData->egl.getCurrentSurface(EGL_READ),
+                               pData->egl.getCurrentContext());
 
-        discard_surface_context(surface);
-        surface->isResized = EGL_FALSE;
-        surface->ctx.wlStreamResource = NULL;
-        surface->ctx.isAttached = EGL_FALSE;
-        surface->ctx.eglSurface = EGL_NO_SURFACE;
-        surface->ctx.eglStream = EGL_NO_STREAM_KHR;
-        surface->ctx.damageThreadSync = EGL_NO_SYNC_KHR;
-        surface->ctx.damageThreadId = (pthread_t)0;
-
-        err = create_surface_context(surface);
-        if (err == EGL_SUCCESS) {
-            pData->egl.makeCurrent(display,
-                                   surface,
-                                   surface,
-                                   pData->egl.getCurrentContext());
-
-            if (surface->ctx.wlStreamResource) {
-                /* Set client's pendingSwapIntervalUpdate for updating client's
-                 * swapinterval
-                 */
-                surface->pendingSwapIntervalUpdate = EGL_TRUE;
-            }
+        if (surface->ctx.wlStreamResource) {
+            /* Set client's pendingSwapIntervalUpdate for updating client's
+             * swapinterval
+             */
+            surface->pendingSwapIntervalUpdate = EGL_TRUE;
         }
     }
-    pthread_mutex_unlock(&surface->mutexLock);
 }
 
 static void
 resize_callback(struct wl_egl_window *window, void *data)
 {
     WlEglDisplay      *display = NULL;
+    WlEglPlatformData *pData;
     WlEglSurface      *surface = (WlEglSurface *)data;
 
     if (!window || !surface) {
@@ -1673,6 +1668,8 @@ resize_callback(struct wl_egl_window *window, void *data)
         return;
     }
 
+    pData = display->data;
+
     pthread_mutex_lock(&surface->mutexLock);
 
     /* Resize stream only if window geometry has changed */
@@ -1680,8 +1677,12 @@ resize_callback(struct wl_egl_window *window, void *data)
         (surface->height != window->height) ||
         (surface->dx != window->dx) ||
         (surface->dy != window->dy)) {
-            surface->isResized = EGL_TRUE;
-            wl_surface_commit(surface->wlSurface);
+            if (surface == pData->egl.getCurrentSurface(EGL_DRAW) ||
+                surface == pData->egl.getCurrentSurface(EGL_READ)) {
+                wlEglResizeSurface(display, pData, surface);
+            } else {
+                surface->isResized = EGL_TRUE;
+            }
     }
     
     pthread_mutex_unlock(&surface->mutexLock);

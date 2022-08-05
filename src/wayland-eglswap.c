@@ -64,8 +64,6 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
 
     surface = eglSurface;
 
-    wlEglResizeSurfaceIfRequired(display, data, surface);
-
     if (surface->pendingSwapIntervalUpdate == EGL_TRUE) {
         /* Send request from client to override swapinterval value based on
          * server's swapinterval for overlay compositing
@@ -141,6 +139,10 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
             wlEglCreateFrameSync(surface);
             res = wlEglSendDamageEvent(surface, surface->wlEventQueue);
         }
+    }
+
+    if (surface->isResized) {
+        wlEglResizeSurface(display, data, surface);
     }
 
 done:

@@ -146,9 +146,9 @@ struct WlEglSurfaceRec {
     EGLBoolean isResized;
 };
 
-void wlEglResizeSurfaceIfRequired(WlEglDisplay *display,
-                                  WlEglPlatformData *pData,
-                                  WlEglSurface *surface);
+void wlEglResizeSurface(WlEglDisplay *display,
+                        WlEglPlatformData *pData,
+                        WlEglSurface *surface);
 
 EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
                                                 EGLConfig config,
