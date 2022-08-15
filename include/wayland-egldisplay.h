@@ -66,6 +66,7 @@ typedef struct WlEglDisplayRec {
     WlEglPlatformData *data;
 
     EGLBoolean useInitRefCount;
+    EGLDeviceEXT requestedDevice;
 
     /**
      * The number of times that eglTerminate has to be called before the

@@ -536,7 +536,8 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     wl_list_for_each(display, &wlEglDisplayList, link) {
         if ((display->nativeDpy == nativeDpy ||
             (!nativeDpy && display->ownNativeDpy))
-            && display->useInitRefCount == useInitRefCount) {
+            && display->useInitRefCount == useInitRefCount
+            && display->requestedDevice == requestedDevice) {
             wlExternalApiUnlock();
             return (EGLDisplay)display;
         }
@@ -552,6 +553,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 
     display->nativeDpy   = nativeDpy;
     display->useInitRefCount = useInitRefCount;
+    display->requestedDevice = requestedDevice;
 
     /* If default display is requested, create a new Wayland display connection
      * and its corresponding internal EGLDisplay. Otherwise, check for existing
