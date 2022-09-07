@@ -46,6 +46,14 @@ WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
                                        struct wl_surface *native_surface,
                                        int fifo_length);
 
+WL_EXPORT
+WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
+                                        int width,
+                                        int height,
+                                        struct wl_surface *native_surface,
+                                        int fifo_length,
+                                        const EGLAttrib *attribs);
+
 #ifdef __cplusplus
 }
 #endif

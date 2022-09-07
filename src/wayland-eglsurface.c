@@ -60,6 +60,14 @@ static void
 remove_surface_image(WlEglDisplay *display,
                      WlEglSurface *surface,
                      EGLImageKHR eglImage);
+                     
+static EGLBoolean
+validateSurfaceAttrib(EGLAttrib attrib,
+                      EGLAttrib value);
+
+static EGLint
+assignWlEglSurfaceAttribs(WlEglSurface *surface,
+                          const EGLAttrib *attribs); 
 
 EGLBoolean wlEglIsWlEglSurfaceForDisplay(WlEglDisplay *display, WlEglSurface *surface)
 {
@@ -1611,6 +1619,33 @@ fail:
     wlEglReleaseDisplay(display);
     free(surface);
     return NULL;
+}
+
+WL_EXPORT
+WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
+                                        int width,
+                                        int height,
+                                        struct wl_surface *native_surface,
+                                        int fifo_length,
+                                        const EGLAttrib *attribs)
+{
+    WlEglSurface* const surface = wlEglCreateSurfaceExport(dpy,
+                                                           width,
+                                                           height,
+                                                           native_surface,
+                                                           fifo_length);
+    if (!surface)
+    {
+        return NULL;
+    }
+
+    if (assignWlEglSurfaceAttribs(surface, attribs) != EGL_SUCCESS)
+    {
+        wlEglDestroySurfaceHook(dpy, surface);
+        return NULL;
+    }
+
+    return surface;
 }
 
 void
