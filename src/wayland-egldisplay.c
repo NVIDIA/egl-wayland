@@ -652,6 +652,22 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
             }
         }
         if (found) {
+            if (serverDevice != EGL_NO_DEVICE_EXT && serverDevice != requestedDevice) {
+                /*
+                 * Don't allow NV -> NV offloading, because it doesn't
+                 * currently work in Weston or Mutter. Weston may try to use
+                 * the images as scanout buffers (which doesn't work), and
+                 * Mutter doesn't correctly handle external-only images.
+                 *
+                 * Without proper compositor support, This could still work if
+                 * the client either does a blit between devices into something
+                 * that the compositor can consume, or reads back the image
+                 * into an SHM buffer.
+                 */
+                err = EGL_BAD_MATCH;
+                goto fail;
+            }
+
             eglDevice = requestedDevice;
         } else if (!usePrimeRenderOffload) {
             /*
