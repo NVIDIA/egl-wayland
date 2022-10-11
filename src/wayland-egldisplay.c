@@ -31,6 +31,7 @@
 #include "wayland-eglutils.h"
 #include "wayland-drm-client-protocol.h"
 #include "wayland-drm.h"
+#include "presentation-time-client-protocol.h"
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -231,6 +232,11 @@ registry_handle_global(void *data,
         display->wlStreamCtlVer = version;
     } else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
         dmabuf_set_interface(display, registry, name, version);
+    } else if (strcmp(interface, "wp_presentation") == 0) {
+        display->wpPresentation = wl_registry_bind(registry,
+                                                   name,
+                                                   &wp_presentation_interface,
+                                                   version);
     }
 }
 
@@ -411,6 +417,10 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
         if (display->wlStreamDpy) {
             wl_eglstream_display_destroy(display->wlStreamDpy);
             display->wlStreamDpy = NULL;
+        }
+        if (display->wpPresentation) {
+            wp_presentation_destroy(display->wpPresentation);
+            display->wpPresentation = NULL;
         }
         if (display->wlEventQueue) {
             wl_event_queue_destroy(display->wlEventQueue);

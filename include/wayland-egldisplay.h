@@ -56,6 +56,7 @@ typedef struct WlEglDisplayRec {
     struct wl_eglstream_controller *wlStreamCtl;
     struct zwp_linux_dmabuf_v1     *wlDmaBuf;
     unsigned int                    wlStreamCtlVer;
+    struct wp_presentation         *wpPresentation;
     struct wl_event_queue          *wlEventQueue;
     struct {
         unsigned int stream_fd     : 1;

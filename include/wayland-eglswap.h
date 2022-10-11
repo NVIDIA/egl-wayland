@@ -49,6 +49,11 @@ EGLBoolean wlEglPrePresentExport(WlEglSurface *surface);
 WL_EXPORT
 EGLBoolean wlEglPostPresentExport(WlEglSurface *surface);
 
+WL_EXPORT
+EGLBoolean wlEglPostPresentExport2(WlEglSurface *surface,
+                                   uint64_t presentId,
+                                   void *presentInfo);
+
 #ifdef __cplusplus
 }
 #endif

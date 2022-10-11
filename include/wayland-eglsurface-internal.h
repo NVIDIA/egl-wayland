@@ -100,6 +100,11 @@ struct WlEglSurfaceRec {
     EGLint swapInterval;
     EGLint fifoLength;
 
+    int (*present_update_callback)(void*, uint64_t, int);
+    struct wl_event_queue *presentFeedbackQueue;
+    int                   inFlightPresentFeedbackCount;
+    int                   landedPresentFeedbackCount;
+
     struct wl_callback    *throttleCallback;
     struct wl_event_queue *wlEventQueue;
 

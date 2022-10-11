@@ -1548,6 +1548,73 @@ EGLStreamKHR wlEglGetSurfaceStreamExport(WlEglSurface *surface)
 }
 
 WL_EXPORT
+int wlEglWaitAllPresentationFeedbacksExport(WlEglSurface *surface)
+{
+    int numberOfPresentEvents = 0;
+
+    WlEglDisplay *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
+    pthread_mutex_lock(&surface->mutexLock);
+
+    // Destroy all presentation feedback objects in flight
+    if (display->wpPresentation) {
+        assert(surface->landedPresentFeedbackCount == 0);
+
+        while (surface->inFlightPresentFeedbackCount > 0) {
+            const int ret = wl_display_dispatch_queue(display->nativeDpy, surface->presentFeedbackQueue);
+            if (ret < 0) {
+                pthread_mutex_unlock(&surface->mutexLock);
+                wlEglReleaseDisplay(display);
+
+                return ret;
+            }
+        }
+    }
+
+    assert(surface->inFlightPresentFeedbackCount == 0);
+
+    numberOfPresentEvents = surface->landedPresentFeedbackCount;
+    surface->landedPresentFeedbackCount = 0;
+
+    pthread_mutex_unlock(&surface->mutexLock);
+    wlEglReleaseDisplay(display);
+
+    return numberOfPresentEvents;
+}
+
+WL_EXPORT
+int wlEglProcessPresentationFeedbacksExport(WlEglSurface *surface)
+{
+    int numberOfPresentEvents = 0;
+
+    WlEglDisplay *display = wlEglAcquireDisplay((WlEglDisplay *)surface->wlEglDpy);
+    pthread_mutex_lock(&surface->mutexLock);
+
+    if (display->wpPresentation) {
+        int ret = 0;
+
+        assert(surface->landedPresentFeedbackCount == 0);
+        ret = wl_display_dispatch_queue_pending(display->nativeDpy,
+                                                          surface->presentFeedbackQueue);
+        if (ret < 0) {
+            pthread_mutex_unlock(&surface->mutexLock);
+            wlEglReleaseDisplay(display);
+
+            return ret;
+        }
+    }
+
+    numberOfPresentEvents = surface->landedPresentFeedbackCount;
+    surface->landedPresentFeedbackCount = 0;
+
+    assert(surface->inFlightPresentFeedbackCount >= 0);
+
+    pthread_mutex_unlock(&surface->mutexLock);
+    wlEglReleaseDisplay(display);
+
+    return numberOfPresentEvents;
+}
+
+WL_EXPORT
 WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
                                        int width,
                                        int height,
@@ -1577,6 +1644,12 @@ WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
 
     // Create per surface wayland queue
     surface->wlEventQueue = wl_display_create_queue(display->nativeDpy);
+    // Create an event queue for presentation time feedback events if
+    // the presentation time protocol exists
+    if (display->wpPresentation) {
+        surface->presentFeedbackQueue = wl_display_create_queue(display->nativeDpy);
+    }
+
     surface->refCount = 1;
 
     if (!wlEglInitializeMutex(&surface->mutexLock)) {
@@ -1597,6 +1670,9 @@ WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
 
     if (create_surface_context(surface) != EGL_SUCCESS) {
         wl_event_queue_destroy(surface->wlEventQueue);
+        if (surface->presentFeedbackQueue) {
+            wl_event_queue_destroy(surface->presentFeedbackQueue);
+        }
         goto fail;
     }
 
@@ -1627,6 +1703,7 @@ WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
                                         int height,
                                         struct wl_surface *native_surface,
                                         int fifo_length,
+                                        int (*present_update_callback)(void*, uint64_t, int),
                                         const EGLAttrib *attribs)
 {
     WlEglSurface* const surface = wlEglCreateSurfaceExport(dpy,
@@ -1638,6 +1715,8 @@ WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
     {
         return NULL;
     }
+
+    surface->present_update_callback = present_update_callback;
 
     if (assignWlEglSurfaceAttribs(surface, attribs) != EGL_SUCCESS)
     {
@@ -1916,6 +1995,10 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
         }
     }
 
+    if (surface->presentFeedbackQueue != NULL) {
+        wl_event_queue_destroy(surface->presentFeedbackQueue);
+        surface->presentFeedbackQueue = NULL;
+    }
     if (surface->throttleCallback != NULL) {
         wl_callback_destroy(surface->throttleCallback);
         surface->throttleCallback = NULL;
