@@ -62,13 +62,21 @@ libnvidia_egl_wayland_la_dmabuf_built_client_headers =        \
 libnvidia_egl_wayland_la_dmabuf_built_private_protocols =     \
     linux-dmabuf-unstable-v1-protocol.c
 
-libnvidia_egl_wayland_la_built_sources =                      \
-    $(libnvidia_egl_wayland_la_built_public_protocols)        \
-    $(libnvidia_egl_wayland_la_built_private_protocols)       \
-    $(libnvidia_egl_wayland_la_built_client_headers)          \
-    $(libnvidia_egl_wayland_la_built_server_headers)          \
-    $(libnvidia_egl_wayland_la_dmabuf_built_client_headers)   \
-    $(libnvidia_egl_wayland_la_dmabuf_built_private_protocols)
+libnvidia_egl_wayland_la_presentation_time_built_client_headers = \
+    presentation-time-client-protocol.h
+
+libnvidia_egl_wayland_la_presentation_time_private_protocols =    \
+    presentation-time-protocol.c
+
+libnvidia_egl_wayland_la_built_sources =                               \
+    $(libnvidia_egl_wayland_la_built_public_protocols)                 \
+    $(libnvidia_egl_wayland_la_built_private_protocols)                \
+    $(libnvidia_egl_wayland_la_built_client_headers)                   \
+    $(libnvidia_egl_wayland_la_built_server_headers)                   \
+    $(libnvidia_egl_wayland_la_dmabuf_built_client_headers)            \
+    $(libnvidia_egl_wayland_la_dmabuf_built_private_protocols)         \
+    $(libnvidia_egl_wayland_la_presentation_time_built_client_headers) \
+    $(libnvidia_egl_wayland_la_presentation_time_private_protocols)
 
 nodist_libnvidia_egl_wayland_la_SOURCES = $(libnvidia_egl_wayland_la_built_sources)
 
@@ -101,6 +109,12 @@ $(libnvidia_egl_wayland_la_dmabuf_built_private_protocols):%-protocol.c : $(WAYL
 	$(AM_V_GEN)$(WAYLAND_SCANNER) $(WAYLAND_PRIVATE_CODEGEN) < $< > $@
 
 $(libnvidia_egl_wayland_la_dmabuf_built_client_headers):%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/unstable/linux-dmabuf/%.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) client-header < $< > $@
+
+$(libnvidia_egl_wayland_la_presentation_time_private_protocols):%-protocol.c : $(WAYLAND_PROTOCOLS_DATADIR)/stable/presentation-time/%.xml
+	$(AM_V_GEN)$(WAYLAND_SCANNER) $(WAYLAND_PRIVATE_CODEGEN) < $< > $@
+
+$(libnvidia_egl_wayland_la_presentation_time_built_client_headers):%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/stable/presentation-time/%.xml
 	$(AM_V_GEN)$(WAYLAND_SCANNER) client-header < $< > $@
 
 $(libnvidia_egl_wayland_la_built_public_protocols):%-protocol.c : %.xml
