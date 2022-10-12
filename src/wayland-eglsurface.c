@@ -1993,6 +1993,14 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
                 surface->wlEglWin->destroy_window_callback = NULL;
             }
         }
+
+        wl_list_for_each_safe(ctx, next, &surface->oldCtxList, link) {
+            destroy_surface_context(surface, ctx);
+            wl_list_remove(&ctx->link);
+            free(ctx);
+        }
+
+        free(surface->attribs);
     }
 
     if (surface->presentFeedbackQueue != NULL) {
@@ -2006,16 +2014,6 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
     if (surface->wlEventQueue != NULL) {
         wl_event_queue_destroy(surface->wlEventQueue);
         surface->wlEventQueue = NULL;
-    }
-
-    if (!surface->ctx.isOffscreen) {
-        wl_list_for_each_safe(ctx, next, &surface->oldCtxList, link) {
-            destroy_surface_context(surface, ctx);
-            wl_list_remove(&ctx->link);
-            free(ctx);
-        }
-
-        free(surface->attribs);
     }
 
     for (i = 0; i < surface->ctx.numStreamImages; i++) {
