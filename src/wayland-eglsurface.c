@@ -1021,8 +1021,14 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
         /*
          * Before sending the format, check if we are ignoring alpha due to a
          * surface attribute.
+	 *
+	 * HACK: Also ignore alpha if this is a Vulkan surface.
+	 * Currently the best way to detect a Vulkan surface is 'isSurfaceProducer',
+	 * and the Vulkan driver only exposes OPAQUE_BIT for VK_KHR_surface.
+	 * If the driver exposes more bits, this check should be updated with it!
+	 * -flibit
          */
-        if (surface->presentOpaque) {
+        if (surface->presentOpaque || !surface->isSurfaceProducer) {
             /*
              * We are ignoring alpha, so we need to find a DRM_FORMAT_* that is equivalent to
              * the current format, but ignores the alpha. i.e. RGBA -> RGBX
