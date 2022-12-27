@@ -188,29 +188,6 @@ static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
 };
 
 static void
-dmabuf_set_interface(WlEglDisplay *display,
-                     struct wl_registry *registry,
-                     uint32_t name,
-                     uint32_t version)
-{
-    if (version < 3) {
-        /*
-         * Version 3 added format modifier support, which the dmabuf
-         * support in this library relies on.
-         */
-        return;
-    }
-
-    display->wlDmaBuf = wl_registry_bind(registry,
-                                         name,
-                                         &zwp_linux_dmabuf_v1_interface,
-                                         3);
-    zwp_linux_dmabuf_v1_add_listener(display->wlDmaBuf,
-                                     &dmabuf_listener,
-                                     display);
-}
-
-static void
 registry_handle_global(void *data,
                        struct wl_registry *registry,
                        uint32_t name,
@@ -231,7 +208,16 @@ registry_handle_global(void *data,
                                                 version);
         display->wlStreamCtlVer = version;
     } else if (strcmp(interface, "zwp_linux_dmabuf_v1") == 0) {
-        dmabuf_set_interface(display, registry, name, version);
+        /*
+         * Version 3 added format modifier support, which the dmabuf
+         * support in this library relies on.
+         */
+        if (version >= 3) {
+            display->wlDmaBuf = wl_registry_bind(registry,
+                                                 name,
+                                                 &zwp_linux_dmabuf_v1_interface,
+                                                 3);
+        }
     } else if (strcmp(interface, "wp_presentation") == 0) {
         display->wpPresentation = wl_registry_bind(registry,
                                                    name,
@@ -425,6 +411,10 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
         if (display->wlEventQueue) {
             wl_event_queue_destroy(display->wlEventQueue);
             display->wlEventQueue = NULL;
+        }
+        if (display->wlDmaBuf) {
+            zwp_linux_dmabuf_v1_destroy(display->wlDmaBuf);
+            display->wlDmaBuf = NULL;
         }
     }
 
@@ -828,24 +818,29 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     }
 
     if (display->wlStreamDpy) {
-        /* Listen to wl_eglstream_display events and make another roundtrip so we
-         * catch any bind-related event (e.g. server capabilities)
-         */
+        /* Listen to wl_eglstream_display events */
         ret = wl_eglstream_display_add_listener(display->wlStreamDpy,
                                                 &eglstream_display_listener,
                                                 display);
-        if (ret == 0) {
-            ret = wl_display_roundtrip_queue(display->nativeDpy,
-                                             display->wlEventQueue);
-        }
-        if (ret < 0) {
-            err = EGL_BAD_ALLOC;
-            goto fail;
-        }
-    } else if (!display->wlDmaBuf) {
+    } else if (display->wlDmaBuf) {
+        ret = zwp_linux_dmabuf_v1_add_listener(display->wlDmaBuf,
+                                               &dmabuf_listener,
+                                               display);
+    }
+
+    if (ret < 0 || !(display->wlStreamDpy || display->wlDmaBuf)) {
         /* This library requires either the EGLStream or dma-buf protocols to
          * present content to the Wayland compositor.
          */
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    /*
+     * Make another roundtrip so we catch any bind-related event (e.g. server capabilities)
+     */
+    ret = wl_display_roundtrip_queue(display->nativeDpy, display->wlEventQueue);
+    if (ret < 0) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }

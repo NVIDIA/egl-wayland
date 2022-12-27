@@ -1263,6 +1263,70 @@ EGLint wlEglHandleImageStreamEvents(WlEglSurface *surface)
     return err;
 }
 
+/*
+ * TODO: Remove this once an EGL extension exists to query this information.
+ *
+ * This is taken from the GBM library, it looks at the config's sizes and
+ * hardcodes the equivalent DRM format. Eventually we want to be able to query
+ * this directly from the EGLConfig, but since that extension is in the works
+ * we don't want to hold up wayland improvements. This function will be used
+ * until the extension is available.
+ */
+static uint32_t ConfigToDrmFourCC(WlEglDisplay* display, EGLConfig config)
+{
+    EGLDisplay dpy = display->devDpy->eglDisplay;
+    EGLint r, g, b, a;
+    EGLBoolean ret = EGL_TRUE;
+
+    ret &= display->data->egl.getConfigAttrib(dpy,
+                                              config,
+                                              EGL_RED_SIZE,
+                                              &r);
+    ret &= display->data->egl.getConfigAttrib(dpy,
+                                              config,
+                                              EGL_GREEN_SIZE,
+                                              &g);
+    ret &= display->data->egl.getConfigAttrib(dpy,
+                                              config,
+                                              EGL_BLUE_SIZE,
+                                              &b);
+    ret &= display->data->egl.getConfigAttrib(dpy,
+                                              config,
+                                              EGL_ALPHA_SIZE,
+                                              &a);
+
+    if (!ret) {
+        /*
+         * The only reason this could fail is some internal error in the
+         * platform library code or if the application terminated the display
+         * in another thread while this code was running. In either case,
+         * behave as if there is no DRM fourcc format associated with this
+         * config.
+         */
+        return 0; /* DRM_FORMAT_INVALID */
+    }
+
+    /* Handles configs with up to 255 bits per component */
+    assert(a < 256 && g < 256 && b < 256 && a < 256);
+#define PACK_CONFIG(r_, g_, b_, a_) \
+    (((r_) << 24ULL) | ((g_) << 16ULL) | ((b_) << 8ULL) | (a_))
+
+    switch (PACK_CONFIG(r, g, b, a)) {
+    case PACK_CONFIG(8, 8, 8, 0):
+        return DRM_FORMAT_XRGB8888;
+    case PACK_CONFIG(8, 8, 8, 8):
+        return DRM_FORMAT_ARGB8888;
+    case PACK_CONFIG(5, 6, 5, 0):
+        return DRM_FORMAT_RGB565;
+    case PACK_CONFIG(10, 10, 10, 0):
+        return DRM_FORMAT_XRGB2101010;
+    case PACK_CONFIG(10, 10, 10, 2):
+        return DRM_FORMAT_ARGB2101010;
+    default:
+        return 0; /* DRM_FORMAT_INVALID */
+    }
+}
+
 static EGLint create_surface_stream_local(WlEglSurface *surface)
 {
     WlEglDisplay         *display = surface->wlEglDpy;
@@ -1273,10 +1337,31 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
         EGL_NONE,                   EGL_NONE,
         EGL_NONE
     };
-    /* EGLImage stream consumer will be configured with linear modifier
-     * if __NV_PRIME_RENDER_OFFLOAD was set during initialization. */
-    uint64_t linearModifier = DRM_FORMAT_MOD_LINEAR;
     EGLint err = EGL_SUCCESS;
+    EGLint numModifiers = 0;
+    EGLuint64KHR *modifiers = NULL;
+    EGLint format;
+
+    /*
+     * Find the format we are using
+     * For now we use the hardcoded calculation in ConfigToDrmFourCC (which is from
+     * the gbm code). In the future we will have an EGL extension to get this from
+     * a config, and we will switch to that.
+     */
+    format = ConfigToDrmFourCC(display, surface->eglConfig);
+    if (!format) {
+        err = EGL_BAD_ACCESS;
+        goto fail;
+    }
+
+    /* grab the modifier array*/
+    for (int i = 0; i < (int)display->numFormats; i++) {
+        if (display->dmaBufFormats[i].format == (uint32_t)format) {
+            modifiers = display->dmaBufFormats[i].modifiers;
+            numModifiers = display->dmaBufFormats[i].numModifiers;
+            break;
+        }
+    }
 
     /* We don't have any mechanism to check whether the compositor is going to
      * use this surface for composition or not when using local streams, so
@@ -1303,8 +1388,8 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     /* Now create the local EGLImage consumer */
     if (!data->egl.streamImageConsumerConnect(dpy,
                                               surface->ctx.eglStream,
-                                              display->primeRenderOffload ? 1 : 0,
-                                              &linearModifier,
+                                              numModifiers,
+                                              modifiers,
                                               NULL)) {
         err = data->egl.getError();
         goto fail;
