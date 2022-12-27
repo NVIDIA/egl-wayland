@@ -1355,10 +1355,10 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     }
 
     /* grab the modifier array*/
-    for (int i = 0; i < (int)display->numFormats; i++) {
-        if (display->dmaBufFormats[i].format == (uint32_t)format) {
-            modifiers = display->dmaBufFormats[i].modifiers;
-            numModifiers = display->dmaBufFormats[i].numModifiers;
+    for (int i = 0; i < (int)display->formatSet.numFormats; i++) {
+        if (display->formatSet.dmaBufFormats[i].format == (uint32_t)format) {
+            modifiers = display->formatSet.dmaBufFormats[i].modifiers;
+            numModifiers = display->formatSet.dmaBufFormats[i].numModifiers;
             break;
         }
     }

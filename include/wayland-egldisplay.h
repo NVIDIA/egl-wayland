@@ -39,11 +39,25 @@ extern "C" {
    when the attach_eglstream_consumer_attrib() request was first available" */
 #define WL_EGLSTREAM_CONTROLLER_ATTACH_EGLSTREAM_CONSUMER_ATTRIB_SINCE 2
 
+/*
+ * Our representation of a dmabuf format. It has a drm_fourcc.h code
+ * and a collection of modifiers that are supported.
+ */
 typedef struct WlEglDmaBufFormatRec {
     uint32_t format;
     uint32_t numModifiers;
     uint64_t *modifiers;
 } WlEglDmaBufFormat;
+
+/*
+ * This is a helper struct for a collection of dmabuf formats. We have
+ * a couple areas of the code that want to manage sets of formats and
+ * this allows us to share code.
+ */
+typedef struct WlEglDmaBufFormatSetRec {
+    uint32_t numFormats;
+    WlEglDmaBufFormat *dmaBufFormats;
+} WlEglDmaBufFormatSet;
 
 typedef struct WlEglDisplayRec {
     WlEglDeviceDpy *devDpy;
@@ -91,8 +105,8 @@ typedef struct WlEglDisplayRec {
 
     struct wl_list link;
 
-    WlEglDmaBufFormat *dmaBufFormats;
-    uint32_t numFormats;
+    /* The formats given to us by the linux_dmabuf.modifiers event */
+    WlEglDmaBufFormatSet formatSet;
 
     EGLBoolean primeRenderOffload;
 } WlEglDisplay;

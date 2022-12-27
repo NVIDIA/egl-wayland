@@ -108,18 +108,17 @@ EGLBoolean wlEglUnbindDisplaysHook(EGLDisplay dpy, void *nativeDpy)
 }
 
 static void
-dmabuf_handle_format(void *data,
-                     struct zwp_linux_dmabuf_v1 *dmabuf,
-                     uint32_t format)
+wlEglDestroyFormatSet(WlEglDmaBufFormatSet *set)
 {
-    (void)data;
-    (void)dmabuf;
-    (void)format;
-    /* Only use formats that include an associated modifier */
+    for (unsigned int i = 0; i < set->numFormats; i++) {
+        free(set->dmaBufFormats[i].modifiers);
+    }
+
+    free(set->dmaBufFormats);
 }
 
 static void
-dmabuf_add_format_modifier(WlEglDmaBufFormat *format, const uint64_t modifier)
+wlEglDmaBufFormatAddModifier(WlEglDmaBufFormat *format, const uint64_t modifier)
 {
     uint64_t *newModifiers;
     uint32_t m;
@@ -145,6 +144,46 @@ dmabuf_add_format_modifier(WlEglDmaBufFormat *format, const uint64_t modifier)
 }
 
 static void
+wlEglFormatSetAdd(WlEglDmaBufFormatSet *set, uint32_t format, const uint64_t modifier)
+{
+    uint32_t f;
+    WlEglDmaBufFormat *newFormats;
+
+    for (f = 0; f < set->numFormats; f++) {
+        if (set->dmaBufFormats[f].format == format) {
+            wlEglDmaBufFormatAddModifier(&set->dmaBufFormats[f], modifier);
+            return;
+        }
+    }
+
+    newFormats = realloc(set->dmaBufFormats,
+            sizeof(set->dmaBufFormats[0]) * (set->numFormats + 1));
+
+    if (!newFormats) {
+        return;
+    }
+
+    newFormats[set->numFormats].format = format;
+    newFormats[set->numFormats].numModifiers = 0;
+    newFormats[set->numFormats].modifiers = NULL;
+    wlEglDmaBufFormatAddModifier(&newFormats[set->numFormats], modifier);
+
+    set->dmaBufFormats = newFormats;
+    set->numFormats++;
+}
+
+static void
+dmabuf_handle_format(void *data,
+                     struct zwp_linux_dmabuf_v1 *dmabuf,
+                     uint32_t format)
+{
+    (void)data;
+    (void)dmabuf;
+    (void)format;
+    /* Only use formats that include an associated modifier */
+}
+
+static void
 dmabuf_handle_modifier(void *data,
                        struct zwp_linux_dmabuf_v1 *dmabuf,
                        uint32_t format,
@@ -152,34 +191,11 @@ dmabuf_handle_modifier(void *data,
                        uint32_t mod_lo)
 {
     WlEglDisplay *display = data;
-    WlEglDmaBufFormat *newFormats;
     const uint64_t modifier = ((uint64_t)mod_hi << 32ULL) | (uint64_t)mod_lo;
-    uint32_t f;
 
     (void)dmabuf;
 
-    for (f = 0; f < display->numFormats; f++) {
-        if (display->dmaBufFormats[f].format == format) {
-            dmabuf_add_format_modifier(&display->dmaBufFormats[f], modifier);
-            return;
-        }
-    }
-
-    newFormats = realloc(display->dmaBufFormats,
-                         sizeof(display->dmaBufFormats[0]) *
-                         (display->numFormats + 1));
-
-    if (!newFormats) {
-        return;
-    }
-
-    newFormats[display->numFormats].format = format;
-    newFormats[display->numFormats].numModifiers = 0;
-    newFormats[display->numFormats].modifiers = NULL;
-    dmabuf_add_format_modifier(&newFormats[display->numFormats], modifier);
-
-    display->dmaBufFormats = newFormats;
-    display->numFormats++;
+    wlEglFormatSetAdd(&display->formatSet, format, modifier);
 }
 
 static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
@@ -417,6 +433,8 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
             display->wlDmaBuf = NULL;
         }
     }
+
+    wlEglDestroyFormatSet(&display->formatSet);
 
     return EGL_TRUE;
 }
