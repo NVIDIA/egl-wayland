@@ -37,6 +37,7 @@
 #include <assert.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/mman.h>
 
 typedef struct WlServerProtocolsRec {
     EGLBoolean hasEglStream;
@@ -115,6 +116,44 @@ wlEglDestroyFormatSet(WlEglDmaBufFormatSet *set)
     }
 
     free(set->dmaBufFormats);
+}
+
+static void
+wlEglFeedbackResetTranches(WlEglDmaBufFeedback *feedback)
+{
+    if (feedback->numTranches == 0)
+        return;
+
+    wlEglDestroyFormatSet(&feedback->tmpTranche.formatSet);
+    for (int i = 0; i < feedback->numTranches; i++) {
+        wlEglDestroyFormatSet(&feedback->tranches[i].formatSet);
+    }
+    free(feedback->tranches);
+    feedback->tranches = NULL;
+    feedback->numTranches = 0;
+}
+
+#if defined(NV_SUNOS)
+// Solaris uses the obsolete 'caddr_t' type unless _X_OPEN_SOURCE is set.
+// Unfortunately, setting that flag breaks a lot of other code so instead
+// just cast the pointer to the appropriate type.
+//
+// caddr_t is defined in sys/types.h to be char*.
+typedef caddr_t pointer_t;
+#else
+typedef void *pointer_t;
+#endif
+
+static void
+wlEglDestroyFeedback(WlEglDmaBufFeedback *feedback)
+{
+    wlEglFeedbackResetTranches(feedback);
+    munmap((pointer_t)feedback->formatTable.entry,
+           sizeof(feedback->formatTable.entry[0]) * feedback->formatTable.len);
+
+    if (feedback->wlDmaBufFeedback) {
+        zwp_linux_dmabuf_feedback_v1_destroy(feedback->wlDmaBufFeedback);
+    }
 }
 
 static void
@@ -203,6 +242,166 @@ static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
     .modifier = dmabuf_handle_modifier,
 };
 
+/*
+ * We need to check if the compositor is resending all of the tranche
+ * information. Each tranche event will call this method to see
+ * if the existing format info should be cleared before refilling.
+ */
+static void
+dmabuf_feedback_check_reset_tranches(WlEglDmaBufFeedback *feedback)
+{
+    if (!feedback->feedbackDone)
+        return;
+
+    feedback->feedbackDone = false;
+    wlEglFeedbackResetTranches(feedback);
+}
+
+static void
+dmabuf_feedback_main_device(void *data,
+                            struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                            struct wl_array *dev)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    dev_t devid;
+    (void) dmabuf_feedback;
+
+    dmabuf_feedback_check_reset_tranches(feedback);
+
+    assert(dev->size == sizeof(dev_t));
+    memcpy(&devid, dev->data, sizeof(dev_t));
+
+    feedback->mainDev = devid;
+}
+
+static void
+dmabuf_feedback_tranche_target_device(void *data,
+                                      struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                                      struct wl_array *dev)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    (void) dmabuf_feedback;
+
+    dmabuf_feedback_check_reset_tranches(feedback);
+
+    assert(dev->size == sizeof(dev_t));
+    memcpy(&feedback->tmpTranche.drmDev, dev->data, sizeof(dev_t));
+}
+
+static void
+dmabuf_feedback_tranche_flags(void *data,
+                              struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                              uint32_t flags)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    (void) dmabuf_feedback;
+
+    dmabuf_feedback_check_reset_tranches(feedback);
+
+    if (flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT)
+        feedback->tmpTranche.supportsScanout = true;
+}
+
+static void
+dmabuf_feedback_tranche_formats(void *data,
+                                struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                                struct wl_array *indices)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    WlEglDmaBufTranche *tmp = &feedback->tmpTranche;
+    uint16_t *index;
+    WlEglDmaBufFormatTableEntry *entry;
+    (void) dmabuf_feedback;
+
+    dmabuf_feedback_check_reset_tranches(feedback);
+
+    wl_array_for_each(index, indices) {
+        if (*index >= feedback->formatTable.len) {
+            /*
+             * Index given to us by the compositor is too large to fit in the format table.
+             * This is a compositor bug, just skip it.
+             */
+            continue;
+        }
+
+        /* Look up this format/mod in the format table */
+        entry = &feedback->formatTable.entry[*index];
+
+        /* Add it to the in-progress */
+        wlEglFormatSetAdd(&tmp->formatSet, entry->format, entry->modifier);
+    }
+}
+
+static void
+dmabuf_feedback_tranche_done(void *data,
+                             struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    (void) dmabuf_feedback;
+
+    /*
+     * No need to call dmabuf_feedback_check_reset_tranches, the other events should have been
+     * triggered first
+     */
+
+    feedback->numTranches++;
+    feedback->tranches = realloc(feedback->tranches,
+            sizeof(WlEglDmaBufTranche) * feedback->numTranches);
+    assert(feedback->tranches);
+
+    /* copy the temporary tranche into the official array */
+    memcpy(&feedback->tranches[feedback->numTranches - 1],
+           &feedback->tmpTranche, sizeof(WlEglDmaBufTranche));
+
+    /* reset the tranche */
+    memset(&feedback->tmpTranche, 0, sizeof(WlEglDmaBufTranche));
+}
+
+static void
+dmabuf_feedback_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    (void) dmabuf_feedback;
+
+    feedback->feedbackDone = true;
+}
+
+_Static_assert(sizeof(WlEglDmaBufFormatTableEntry) == 16,
+        "Validate that this struct's layout wasn't modified by the compiler");
+
+static void
+dmabuf_feedback_format_table(void *data,
+                             struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                             int32_t fd, uint32_t size)
+{
+    WlEglDmaBufFeedback *feedback = data;
+    (void) dmabuf_feedback;
+
+    assert(size % sizeof(WlEglDmaBufFormatTableEntry) == 0);
+    feedback->formatTable.len = size / sizeof(WlEglDmaBufFormatTableEntry);
+
+    feedback->formatTable.entry =
+        (WlEglDmaBufFormatTableEntry *)mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    close(fd);
+
+    if (feedback->formatTable.entry == MAP_FAILED) {
+        /*
+         * Could not map the format table: Compositor bug or out of resources
+         */
+        feedback->formatTable.len = 0;
+    }
+}
+
+static const struct zwp_linux_dmabuf_feedback_v1_listener dmabuf_feedback_listener = {
+    .done = dmabuf_feedback_done,
+    .format_table = dmabuf_feedback_format_table,
+    .main_device = dmabuf_feedback_main_device,
+    .tranche_done = dmabuf_feedback_tranche_done,
+    .tranche_target_device = dmabuf_feedback_tranche_target_device,
+    .tranche_formats = dmabuf_feedback_tranche_formats,
+    .tranche_flags = dmabuf_feedback_tranche_flags,
+};
+
 static void
 registry_handle_global(void *data,
                        struct wl_registry *registry,
@@ -232,8 +431,9 @@ registry_handle_global(void *data,
             display->wlDmaBuf = wl_registry_bind(registry,
                                                  name,
                                                  &zwp_linux_dmabuf_v1_interface,
-                                                 3);
+                                                 version > 3 ? 4 : 3);
         }
+        display->dmaBufProtocolVersion = version;
     } else if (strcmp(interface, "wp_presentation") == 0) {
         display->wpPresentation = wl_registry_bind(registry,
                                                    name,
@@ -435,6 +635,7 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
     }
 
     wlEglDestroyFormatSet(&display->formatSet);
+    wlEglDestroyFeedback(&display->defaultFeedback);
 
     return EGL_TRUE;
 }
@@ -844,6 +1045,18 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         ret = zwp_linux_dmabuf_v1_add_listener(display->wlDmaBuf,
                                                &dmabuf_listener,
                                                display);
+
+        if (ret == 0 && display->dmaBufProtocolVersion >= 4) {
+            /* Since the compositor supports it, opt into surface format feedback */
+            display->defaultFeedback.wlDmaBufFeedback =
+                zwp_linux_dmabuf_v1_get_default_feedback(display->wlDmaBuf);
+            if (display->defaultFeedback.wlDmaBufFeedback) {
+                ret = zwp_linux_dmabuf_feedback_v1_add_listener(
+                        display->defaultFeedback.wlDmaBufFeedback,
+                        &dmabuf_feedback_listener,
+                        &display->defaultFeedback);
+            }
+        }
     }
 
     if (ret < 0 || !(display->wlStreamDpy || display->wlDmaBuf)) {

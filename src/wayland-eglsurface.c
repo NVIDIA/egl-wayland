@@ -41,6 +41,7 @@
 #include <poll.h>
 #include <errno.h>
 #include <libdrm/drm_fourcc.h>
+#include <sys/stat.h>
 
 #define WL_EGL_WINDOW_DESTROY_CALLBACK_SINCE 3
 
@@ -1263,6 +1264,19 @@ EGLint wlEglHandleImageStreamEvents(WlEglSurface *surface)
     return err;
 }
 
+static WlEglDmaBufFormatSet *
+WlEglGetFormatSetForDev(WlEglDmaBufFeedback *feedback, dev_t dev)
+{
+    /* find the dev_t in our feedback's list of tranches */
+    for (int i = 0; i < (int)feedback->numTranches; i++) {
+        if (feedback->tranches[i].drmDev == dev) {
+            return &feedback->tranches[i].formatSet;
+        }
+    }
+
+    return NULL;
+}
+
 /*
  * TODO: Remove this once an EGL extension exists to query this information.
  *
@@ -1341,6 +1355,14 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     EGLint numModifiers = 0;
     EGLuint64KHR *modifiers = NULL;
     EGLint format;
+    WlEglDmaBufFormatSet *formatSet = NULL;
+    WlEglDmaBufFeedback *feedback = NULL;
+
+    /* First do a roundtrip to get the tranches in case the compositor resent them */
+    if (wl_display_roundtrip_queue(display->nativeDpy, display->wlEventQueue) < 0) {
+        err = EGL_BAD_ACCESS;
+        goto fail;
+    }
 
     /*
      * Find the format we are using
@@ -1354,12 +1376,27 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
         goto fail;
     }
 
-    /* grab the modifier array*/
-    for (int i = 0; i < (int)display->formatSet.numFormats; i++) {
-        if (display->formatSet.dmaBufFormats[i].format == (uint32_t)format) {
-            modifiers = display->formatSet.dmaBufFormats[i].modifiers;
-            numModifiers = display->formatSet.dmaBufFormats[i].numModifiers;
-            break;
+    /* Get our format set, if we have feedback it will be the device's format set */
+    if (display->dmaBufProtocolVersion < 4) {
+        formatSet = &display->formatSet;
+    } else {
+        feedback = &display->defaultFeedback;
+
+        formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->dev);
+        if (!formatSet) {
+            /* try again and see if there is a matching tranche for the render node */
+            formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->renderNode);
+        }
+    }
+
+    /* grab the modifier array */
+    if (formatSet) {
+        for (int i = 0; i < (int)formatSet->numFormats; i++) {
+            if (formatSet->dmaBufFormats[i].format == (uint32_t)format) {
+                modifiers = formatSet->dmaBufFormats[i].modifiers;
+                numModifiers = formatSet->dmaBufFormats[i].numModifiers;
+                break;
+            }
         }
     }
 

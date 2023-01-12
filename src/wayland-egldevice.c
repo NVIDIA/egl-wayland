@@ -25,6 +25,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "wayland-eglhandle.h"
 #include "wayland-eglutils.h"
@@ -39,6 +42,8 @@ WlEglDeviceDpy *wlGetInternalDisplay(WlEglPlatformData *data, EGLDeviceEXT devic
 
     WlEglDeviceDpy *devDpy = NULL;
     const EGLint *attribs = NULL;
+    const char *drmName = NULL, *renderName = NULL;
+    struct stat sb, render_sb;
 
     // First, see if we've already created an EGLDisplay for this device.
     wl_list_for_each(devDpy, &data->deviceDpyList, link) {
@@ -67,12 +72,42 @@ WlEglDeviceDpy *wlGetInternalDisplay(WlEglPlatformData *data, EGLDeviceEXT devic
     devDpy->eglDisplay = data->egl.getPlatformDisplay(EGL_PLATFORM_DEVICE_EXT,
             device, attribs);
     if (devDpy->eglDisplay == EGL_NO_DISPLAY) {
-        free(devDpy);
-        return NULL;
+        goto fail;
     }
+
+    /* Get the device in use,
+     * calling eglQueryDeviceStringEXT(EGL_DRM_RENDER_NODE_FILE_EXT) to get drm fd.
+     * We will be getting the dev_t for the render node and the normal node, since
+     * we don't know for sure which one the compositor will happen to use.
+     */
+    drmName = data->egl.queryDeviceString(devDpy->eglDevice,
+                                          EGL_DRM_DEVICE_FILE_EXT);
+    if (!drmName) {
+        goto fail;
+    }
+    /* Then use stat to get the dev_t for this device */
+    if (stat(drmName, &sb) != 0) {
+        goto fail;
+    }
+
+    renderName = data->egl.queryDeviceString(devDpy->eglDevice,
+                                             EGL_DRM_RENDER_NODE_FILE_EXT);
+    if (!renderName) {
+        goto fail;
+    }
+    if (stat(renderName, &render_sb) != 0) {
+        goto fail;
+    }
+
+    devDpy->dev = sb.st_rdev;
+    devDpy->renderNode = render_sb.st_rdev;
 
     wl_list_insert(&data->deviceDpyList, &devDpy->link);
     return devDpy;
+
+fail:
+    free(devDpy);
+    return NULL;
 }
 
 static void wlFreeInternalDisplay(WlEglDeviceDpy *devDpy)

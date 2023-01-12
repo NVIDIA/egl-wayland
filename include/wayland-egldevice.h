@@ -29,6 +29,8 @@
 #include "wayland-external-exports.h"
 #include "wayland-eglhandle.h"
 
+#include <sys/types.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -49,6 +51,11 @@ typedef struct WlEglDeviceDpyRec {
     unsigned int initCount;
     EGLint major;
     EGLint minor;
+
+    /* The EGL DRM device */
+    dev_t dev;
+    /* The EGL DRM render node */
+    dev_t renderNode;
 
     struct {
         unsigned int stream                     : 1;

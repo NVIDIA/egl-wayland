@@ -23,6 +23,7 @@
 #ifndef WAYLAND_EGLDISPLAY_H
 #define WAYLAND_EGLDISPLAY_H
 
+#include <sys/types.h>
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 #include <wayland-client.h>
@@ -58,6 +59,59 @@ typedef struct WlEglDmaBufFormatSetRec {
     uint32_t numFormats;
     WlEglDmaBufFormat *dmaBufFormats;
 } WlEglDmaBufFormatSet;
+
+/*
+ * Container for all formats supported by a device. A "tranche" is
+ * really just a set of formats and modifiers supported by a device
+ * with a certain set of flags (really just a scanout flag).
+ */
+typedef struct WlEglDmaBufTrancheRec {
+    dev_t drmDev;
+    int supportsScanout;
+    WlEglDmaBufFormatSet formatSet;
+} WlEglDmaBufTranche;
+
+/*
+ * This is one item in the format table that the compositor sent
+ * us.
+ */
+typedef struct WlEglDmaBufFormatTableEntryRec{
+    uint32_t format;
+    uint32_t pad;
+    uint64_t modifier;
+} WlEglDmaBufFormatTableEntry;
+
+/*
+ * In linux_dmabuf_feedback.format_table the compositor will advertise all
+ * (format, modifier) pairs that it supports importing buffers with. We
+ * the client mmap this format table and refer to it during the tranche
+ * events to construct WlEglDmaBufFormatSets that the compositor
+ * supports.
+ */
+typedef struct WlEglDmaBufFormatTableRec {
+    int len;
+    /* This is mmapped from the fd given to us by the compositor */
+    WlEglDmaBufFormatTableEntry *entry;
+} WlEglDmaBufFormatTable;
+
+/*
+ * A dmabuf feedback object. This will record all tranches sent by the
+ * compositor. It can be used either for per-surface feedback or for
+ * the default feedback for any surface.
+ */
+typedef struct WlEglDmaBufFeedbackRec {
+    struct zwp_linux_dmabuf_feedback_v1 *wlDmaBufFeedback;
+    int numTranches;
+    WlEglDmaBufTranche *tranches;
+    WlEglDmaBufFormatTable formatTable;
+    dev_t mainDev;
+    /*
+     * This will be filled in during wl events and copied to
+     * dev_formats on dmabuf_feedback.tranche_done
+     */
+    WlEglDmaBufTranche tmpTranche;
+    int feedbackDone;
+} WlEglDmaBufFeedback;
 
 typedef struct WlEglDisplayRec {
     WlEglDeviceDpy *devDpy;
@@ -107,6 +161,11 @@ typedef struct WlEglDisplayRec {
 
     /* The formats given to us by the linux_dmabuf.modifiers event */
     WlEglDmaBufFormatSet formatSet;
+
+    /* The linux_dmabuf protocol version in use. Will be >= 3 */
+    unsigned int dmaBufProtocolVersion;
+
+    WlEglDmaBufFeedback defaultFeedback;
 
     EGLBoolean primeRenderOffload;
 } WlEglDisplay;
