@@ -149,6 +149,8 @@ struct WlEglSurfaceRec {
      * eglSwapBuffers(), so just set a resize flag.
      */
     EGLBoolean isResized;
+
+    WlEglDmaBufFeedback feedback;
 };
 
 void wlEglReallocSurface(WlEglDisplay *display,

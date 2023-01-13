@@ -1380,7 +1380,15 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     if (display->dmaBufProtocolVersion < 4) {
         formatSet = &display->formatSet;
     } else {
-        feedback = &display->defaultFeedback;
+        /*
+         * If the surface has a per-surface feedback object, then use the modifiers
+         * from that. Otherwise use the default feedback.
+         */
+        if (surface->feedback.wlDmaBufFeedback) {
+            feedback = &surface->feedback;
+        } else {
+            feedback = &display->defaultFeedback;
+        }
 
         formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->dev);
         if (!formatSet) {
@@ -1866,6 +1874,7 @@ wlEglReallocSurface(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurfac
     surface->ctx.eglStream = EGL_NO_STREAM_KHR;
     surface->ctx.damageThreadSync = EGL_NO_SYNC_KHR;
     surface->ctx.damageThreadId = (pthread_t)0;
+    surface->feedback.unprocessedFeedback = false;
 
     display->defaultFeedback.unprocessedFeedback = false;
 
@@ -2306,6 +2315,27 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     err = assignWlEglSurfaceAttribs(surface, attribs);
     if (err != EGL_SUCCESS) {
         goto fail;
+    }
+
+    /*
+     * If the compositor supports it, then we can request a dmabuf feedback
+     * object for this surface. This will let the compositor give us per-surface
+     * hints about which modifiers to use.
+     */
+    if (display->dmaBufProtocolVersion >= 4) {
+        surface->feedback.wlDmaBufFeedback =
+            zwp_linux_dmabuf_v1_get_surface_feedback(display->wlDmaBuf, surface->wlSurface);
+
+        if (!surface->feedback.wlDmaBufFeedback ||
+            WlEglRegisterFeedback(&surface->feedback)) {
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
+        /* Do a roundtrip to get the tranches before calling create_surface_context */
+        if (wl_display_roundtrip_queue(display->nativeDpy, display->wlEventQueue) < 0) {
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
     }
 
     err = create_surface_context(surface);

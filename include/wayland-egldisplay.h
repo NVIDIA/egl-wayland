@@ -185,6 +185,7 @@ typedef struct WlEventQueueRec {
     struct wl_list threadLink;
 } WlEventQueue;
 
+int WlEglRegisterFeedback(WlEglDmaBufFeedback *feedback);
 EGLBoolean wlEglIsValidNativeDisplayExport(void *data, void *nativeDpy);
 EGLBoolean wlEglBindDisplaysHook(void *data, EGLDisplay dpy, void *nativeDpy);
 EGLBoolean wlEglUnbindDisplaysHook(EGLDisplay dpy, void *nativeDpy);

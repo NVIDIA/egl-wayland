@@ -402,6 +402,14 @@ static const struct zwp_linux_dmabuf_feedback_v1_listener dmabuf_feedback_listen
     .tranche_flags = dmabuf_feedback_tranche_flags,
 };
 
+int
+WlEglRegisterFeedback(WlEglDmaBufFeedback *feedback)
+{
+    return zwp_linux_dmabuf_feedback_v1_add_listener(feedback->wlDmaBufFeedback,
+                                                     &dmabuf_feedback_listener,
+                                                     feedback);
+}
+
 static void
 registry_handle_global(void *data,
                        struct wl_registry *registry,
@@ -1051,10 +1059,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
             display->defaultFeedback.wlDmaBufFeedback =
                 zwp_linux_dmabuf_v1_get_default_feedback(display->wlDmaBuf);
             if (display->defaultFeedback.wlDmaBufFeedback) {
-                ret = zwp_linux_dmabuf_feedback_v1_add_listener(
-                        display->defaultFeedback.wlDmaBufFeedback,
-                        &dmabuf_feedback_listener,
-                        &display->defaultFeedback);
+                ret = WlEglRegisterFeedback(&display->defaultFeedback);
             }
         }
     }
