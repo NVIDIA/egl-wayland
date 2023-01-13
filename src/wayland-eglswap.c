@@ -151,8 +151,9 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         }
     }
 
-    if (surface->isResized) {
-        wlEglResizeSurface(display, data, surface);
+    /* Resize stream if window geometry or available modifiers have changed */
+    if (surface->isResized || display->defaultFeedback.unprocessedFeedback) {
+        wlEglReallocSurface(display, data, surface);
     }
 
 done:

@@ -111,6 +111,11 @@ typedef struct WlEglDmaBufFeedbackRec {
      */
     WlEglDmaBufTranche tmpTranche;
     int feedbackDone;
+    /*
+     * This will be set to true if the compositor notified us of new
+     * modifiers but we haven't reallocated our surface yet.
+     */
+    int unprocessedFeedback;
 } WlEglDmaBufFeedback;
 
 typedef struct WlEglDisplayRec {

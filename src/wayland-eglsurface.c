@@ -1850,9 +1850,7 @@ WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
 }
 
 void
-wlEglResizeSurface(WlEglDisplay *display,
-                   WlEglPlatformData *pData,
-                   WlEglSurface *surface)
+wlEglReallocSurface(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurface *surface)
 {
     EGLint err = EGL_SUCCESS;
 
@@ -1868,6 +1866,8 @@ wlEglResizeSurface(WlEglDisplay *display,
     surface->ctx.eglStream = EGL_NO_STREAM_KHR;
     surface->ctx.damageThreadSync = EGL_NO_SYNC_KHR;
     surface->ctx.damageThreadId = (pthread_t)0;
+
+    display->defaultFeedback.unprocessedFeedback = false;
 
     err = create_surface_context(surface);
     if (err == EGL_SUCCESS) {
@@ -1915,7 +1915,7 @@ resize_callback(struct wl_egl_window *window, void *data)
         (surface->dy != window->dy)) {
             if (surface == pData->egl.getCurrentSurface(EGL_DRAW) ||
                 surface == pData->egl.getCurrentSurface(EGL_READ)) {
-                wlEglResizeSurface(display, pData, surface);
+                wlEglReallocSurface(display, pData, surface);
             } else {
                 surface->isResized = EGL_TRUE;
             }
