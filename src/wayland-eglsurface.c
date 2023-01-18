@@ -1365,45 +1365,51 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     }
 
     /*
-     * Find the format we are using
-     * For now we use the hardcoded calculation in ConfigToDrmFourCC (which is from
-     * the gbm code). In the future we will have an EGL extension to get this from
-     * a config, and we will switch to that.
+     * Vulkan surfaces will not have an eglConfig set. We will need to address them
+     * separately.
      */
-    format = ConfigToDrmFourCC(display, surface->eglConfig);
-    if (!format) {
-        err = EGL_BAD_ACCESS;
-        goto fail;
-    }
-
-    /* Get our format set, if we have feedback it will be the device's format set */
-    if (display->dmaBufProtocolVersion < 4) {
-        formatSet = &display->formatSet;
-    } else {
+    if (surface->eglConfig) {
         /*
-         * If the surface has a per-surface feedback object, then use the modifiers
-         * from that. Otherwise use the default feedback.
+         * Find the format we are using
+         * For now we use the hardcoded calculation in ConfigToDrmFourCC (which is from
+         * the gbm code). In the future we will have an EGL extension to get this from
+         * a config, and we will switch to that.
          */
-        if (surface->feedback.wlDmaBufFeedback) {
-            feedback = &surface->feedback;
+        format = ConfigToDrmFourCC(display, surface->eglConfig);
+        if (!format) {
+            err = EGL_BAD_ACCESS;
+            goto fail;
+        }
+
+        /* Get our format set, if we have feedback it will be the device's format set */
+        if (display->dmaBufProtocolVersion < 4) {
+            formatSet = &display->formatSet;
         } else {
-            feedback = &display->defaultFeedback;
+            /*
+             * If the surface has a per-surface feedback object, then use the modifiers
+             * from that. Otherwise use the default feedback.
+             */
+            if (surface->feedback.wlDmaBufFeedback) {
+                feedback = &surface->feedback;
+            } else {
+                feedback = &display->defaultFeedback;
+            }
+
+            formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->dev);
+            if (!formatSet) {
+                /* try again and see if there is a matching tranche for the render node */
+                formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->renderNode);
+            }
         }
 
-        formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->dev);
-        if (!formatSet) {
-            /* try again and see if there is a matching tranche for the render node */
-            formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->renderNode);
-        }
-    }
-
-    /* grab the modifier array */
-    if (formatSet) {
-        for (int i = 0; i < (int)formatSet->numFormats; i++) {
-            if (formatSet->dmaBufFormats[i].format == (uint32_t)format) {
-                modifiers = formatSet->dmaBufFormats[i].modifiers;
-                numModifiers = formatSet->dmaBufFormats[i].numModifiers;
-                break;
+        /* grab the modifier array */
+        if (formatSet) {
+            for (int i = 0; i < (int)formatSet->numFormats; i++) {
+                if (formatSet->dmaBufFormats[i].format == (uint32_t)format) {
+                    modifiers = formatSet->dmaBufFormats[i].modifiers;
+                    numModifiers = formatSet->dmaBufFormats[i].numModifiers;
+                    break;
+                }
             }
         }
     }
