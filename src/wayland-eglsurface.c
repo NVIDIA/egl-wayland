@@ -1730,7 +1730,7 @@ int wlEglProcessPresentationFeedbacksExport(WlEglSurface *surface)
 
         assert(surface->landedPresentFeedbackCount == 0);
         ret = wl_display_dispatch_queue_pending(display->nativeDpy,
-                                                          surface->presentFeedbackQueue);
+                                                surface->presentFeedbackQueue);
         if (ret < 0) {
             pthread_mutex_unlock(&surface->mutexLock);
             wlEglReleaseDisplay(display);

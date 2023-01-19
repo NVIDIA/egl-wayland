@@ -328,9 +328,9 @@ static void present_feedback_discarded(void *data,
     WlEglSurface *surface = eventItem->surface;
 
     // If the following condition is not true, it means that this presentInfo
-    // is overridden. The presentInfo that it was pointing to when this request
-    // was created is not the same as the one it is pointing to right now.
-    // Status of the previous presentInfo is not relevant
+    // was overwritten. The presentInfo that it was pointing to when this
+    // request was created is not the same as the one it is pointing to right
+    // now. Status of the previous presentInfo is not relevant.
     if (surface->present_update_callback(eventItem->presentInfo,
                                          eventItem->capturedId,
                                          LANDED)) {
@@ -421,8 +421,7 @@ EGLBoolean wlEglPostPresentExport2(WlEglSurface *surface,
 
             surface->present_update_callback(presentInfo, presentId, KICKED_OFF);
             surface->inFlightPresentFeedbackCount++;
-        }
-        else {
+        } else {
             // If the presentation feedback protocol is not supported by the compositor,
             // there is not much we can do to get this information.
             surface->present_update_callback(presentInfo, presentId, LANDED);
