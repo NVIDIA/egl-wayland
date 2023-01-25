@@ -628,6 +628,10 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
             wl_eglstream_display_destroy(display->wlStreamDpy);
             display->wlStreamDpy = NULL;
         }
+        if (display->wlStreamCtl) {
+            wl_eglstream_controller_destroy(display->wlStreamCtl);
+            display->wlStreamCtl = NULL;
+        }
         if (display->wpPresentation) {
             wp_presentation_destroy(display->wpPresentation);
             display->wpPresentation = NULL;
