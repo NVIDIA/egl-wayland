@@ -1400,6 +1400,15 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
                 /* try again and see if there is a matching tranche for the render node */
                 formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->renderNode);
             }
+
+            /*
+             * If we could not find any modifiers for this device, and if we are
+             * in a prime setup, use the main device's format set. This will allow
+             * us to check if the main device supports the linear modifier.
+             */
+            if (!formatSet && display->primeRenderOffload) {
+                formatSet = WlEglGetFormatSetForDev(feedback, feedback->mainDev);
+            }
         }
 
         /* grab the modifier array */
