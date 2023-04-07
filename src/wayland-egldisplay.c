@@ -704,11 +704,11 @@ static void getServerProtocolsInfo(struct wl_display *nativeDpy,
         }
     }
 
+    if (wlRegistry) {
+        wl_registry_destroy(wlRegistry);
+    }
     if (queue) {
         wl_event_queue_destroy(queue);
-    }
-    if (wlRegistry) {
-       wl_registry_destroy(wlRegistry);
     }
 }
 
