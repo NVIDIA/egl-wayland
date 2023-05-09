@@ -363,7 +363,7 @@ dmabuf_feedback_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmabuf_fee
     WlEglDmaBufFeedback *feedback = data;
     (void) dmabuf_feedback;
 
-    feedback->feedbackDone = true;
+    feedback->feedbackDone = feedback->unprocessedFeedback = true;
 }
 
 _Static_assert(sizeof(WlEglDmaBufFormatTableEntry) == 16,
@@ -1084,6 +1084,9 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         err = EGL_BAD_ALLOC;
         goto fail;
     }
+
+    /* We haven't created any surfaces yet, so no need to reallocate. */
+    display->defaultFeedback.unprocessedFeedback = false;
 
     if (major != NULL) {
         *major = display->devDpy->major;

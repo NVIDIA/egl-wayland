@@ -2351,6 +2351,9 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
             err = EGL_BAD_ALLOC;
             goto fail;
         }
+
+        /* We haven't allocated our surface yet, so we can clear this flag. */
+        surface->feedback.unprocessedFeedback = false;
     }
 
     err = create_surface_context(surface);
