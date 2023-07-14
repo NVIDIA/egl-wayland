@@ -2149,6 +2149,8 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
         free(surface->attribs);
     }
 
+    wlEglDestroyFeedback(&surface->feedback);
+
     if (surface->presentFeedbackQueue != NULL) {
         wl_event_queue_destroy(surface->presentFeedbackQueue);
         surface->presentFeedbackQueue = NULL;
@@ -2157,6 +2159,8 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
         wl_callback_destroy(surface->throttleCallback);
         surface->throttleCallback = NULL;
     }
+
+    /* all proxies using the queue must be destroyed first! */
     if (surface->wlEventQueue != NULL) {
         wl_event_queue_destroy(surface->wlEventQueue);
         surface->wlEventQueue = NULL;

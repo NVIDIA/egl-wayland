@@ -144,7 +144,7 @@ typedef caddr_t pointer_t;
 typedef void *pointer_t;
 #endif
 
-static void
+void
 wlEglDestroyFeedback(WlEglDmaBufFeedback *feedback)
 {
     wlEglFeedbackResetTranches(feedback);
@@ -619,6 +619,9 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
      * destroy the display connection itself */
     wlEglDestroyAllSurfaces(display);
 
+    wlEglDestroyFormatSet(&display->formatSet);
+    wlEglDestroyFeedback(&display->defaultFeedback);
+
     if (!globalTeardown || display->ownNativeDpy) {
         if (display->wlRegistry) {
             wl_registry_destroy(display->wlRegistry);
@@ -636,18 +639,16 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
             wp_presentation_destroy(display->wpPresentation);
             display->wpPresentation = NULL;
         }
-        if (display->wlEventQueue) {
-            wl_event_queue_destroy(display->wlEventQueue);
-            display->wlEventQueue = NULL;
-        }
         if (display->wlDmaBuf) {
             zwp_linux_dmabuf_v1_destroy(display->wlDmaBuf);
             display->wlDmaBuf = NULL;
         }
+        /* all proxies using the queue must be destroyed first! */
+        if (display->wlEventQueue) {
+            wl_event_queue_destroy(display->wlEventQueue);
+            display->wlEventQueue = NULL;
+        }
     }
-
-    wlEglDestroyFormatSet(&display->formatSet);
-    wlEglDestroyFeedback(&display->defaultFeedback);
 
     return EGL_TRUE;
 }
