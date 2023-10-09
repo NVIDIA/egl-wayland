@@ -40,6 +40,21 @@ libnvidia_egl_wayland_la_SOURCES =                            \
     src/wayland-drm.c                                         \
     src/wayland-external-exports.c
 
+libnvidia_egl_wayland_la_SOURCES += \
+    include/wayland-drm.h                 \
+    include/wayland-egldevice.h           \
+    include/wayland-egldisplay.h          \
+    include/wayland-eglhandle.h           \
+    include/wayland-eglstream.h           \
+    include/wayland-eglstream-server.h    \
+    include/wayland-eglsurface.h          \
+    include/wayland-eglsurface-internal.h \
+    include/wayland-eglswap.h             \
+    include/wayland-eglutils.h            \
+    include/wayland-external-exports.h    \
+    include/wayland-thread.h              \
+    wayland-egl/wayland-egl-ext.h
+
 libnvidia_egl_wayland_la_built_public_protocols =             \
     wayland-eglstream/wayland-eglstream-controller-protocol.c \
     wayland-drm/wayland-drm-protocol.c
