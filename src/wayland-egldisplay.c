@@ -719,6 +719,7 @@ static EGLBoolean checkNvidiaDrmDevice(WlServerProtocols *protocols)
     int fd = -1;
     EGLBoolean result = EGL_FALSE;
     drmVersion *version = NULL;
+    drmDevice *dev = NULL;
 
     if (protocols->drm_name == NULL) {
         goto done;
@@ -729,22 +730,47 @@ static EGLBoolean checkNvidiaDrmDevice(WlServerProtocols *protocols)
         goto done;
     }
 
-    version = drmGetVersion(fd);
-    if (version == NULL) {
-        goto done;
+    if (drmGetDevice(fd, &dev) == 0) {
+        if (dev->available_nodes & (1 << DRM_NODE_RENDER)) {
+            // Make sure that drm_name is the path to the render node, which is
+            // what wlEglGetPlatformDisplayExport checks for.
+            if (strcmp(protocols->drm_name, dev->nodes[DRM_NODE_RENDER]) != 0) {
+                free(protocols->drm_name);
+                protocols->drm_name = strdup(dev->nodes[DRM_NODE_RENDER]);
+                if (protocols->drm_name == NULL) {
+                    goto done;
+                }
+            }
+        }
+
+        /*
+         * Since we've already called drmGetDevice anyway, if this is a PCI
+         * device, then check if the vendor ID is for NVIDIA. If this is a
+         * Tegra device, though, then it won't be a PCI device, so we'll need
+         * to call drmGetVesion and look at the driver name instead.
+         */
+        if (dev->bustype == DRM_BUS_PCI && dev->deviceinfo.pci->vendor_id == 0x10de) {
+            result = EGL_TRUE;
+        }
     }
 
-    if (version->name != NULL) {
-        if (strcmp(version->name, "nvidia-drm") == 0
-                || strcmp(version->name, "tegra-udrm") == 0
-                || strcmp(version->name, "tegra") == 0) {
-            result = EGL_TRUE;
+    if (!result) {
+        version = drmGetVersion(fd);
+        if (version != NULL && version->name != NULL) {
+            if (strcmp(version->name, "nvidia-drm") == 0
+                    || strcmp(version->name, "tegra-udrm") == 0
+                    || strcmp(version->name, "tegra") == 0) {
+                result = EGL_TRUE;
+            }
         }
     }
 
 done:
     if (version != NULL) {
         drmFreeVersion(version);
+    }
+    if (dev != NULL) {
+        drmFreeDevice(&dev);
     }
     if (fd >= 0) {
         close(fd);
