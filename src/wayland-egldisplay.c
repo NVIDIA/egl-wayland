@@ -38,6 +38,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <xf86drm.h>
 
 typedef struct WlServerProtocolsRec {
     EGLBoolean hasEglStream;
@@ -713,6 +714,44 @@ static void getServerProtocolsInfo(struct wl_display *nativeDpy,
     }
 }
 
+static EGLBoolean checkNvidiaDrmDevice(WlServerProtocols *protocols)
+{
+    int fd = -1;
+    EGLBoolean result = EGL_FALSE;
+    drmVersion *version = NULL;
+
+    if (protocols->drm_name == NULL) {
+        goto done;
+    }
+
+    fd = open(protocols->drm_name, O_RDWR);
+    if (fd < 0) {
+        goto done;
+    }
+
+    version = drmGetVersion(fd);
+    if (version == NULL) {
+        goto done;
+    }
+
+    if (version->name != NULL) {
+        if (strcmp(version->name, "nvidia-drm") == 0
+                || strcmp(version->name, "tegra-udrm") == 0
+                || strcmp(version->name, "tegra") == 0) {
+            result = EGL_TRUE;
+        }
+    }
+
+done:
+    if (version != NULL) {
+        drmFreeVersion(version);
+    }
+    if (fd >= 0) {
+        close(fd);
+    }
+    return result;
+}
+
 EGLDisplay wlEglGetPlatformDisplayExport(void *data,
                                          EGLenum platform,
                                          void *nativeDpy,
@@ -731,6 +770,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     EGLDeviceEXT serverDevice = EGL_NO_DEVICE_EXT;
     EGLDeviceEXT requestedDevice = EGL_NO_DEVICE_EXT;
     EGLBoolean usePrimeRenderOffload = EGL_FALSE;
+    EGLBoolean isServerNV;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -803,12 +843,34 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         wl_display_dispatch_pending(display->nativeDpy);
     }
 
+    primeRenderOffloadStr = getenv("__NV_PRIME_RENDER_OFFLOAD");
+    if (primeRenderOffloadStr && !strcmp(primeRenderOffloadStr, "1")) {
+        usePrimeRenderOffload = EGL_TRUE;
+    }
+
     /*
      * This is where we check the supported protocols on the compositor,
      * and bind to wl_drm to get the device name.
      * protocols.drm_name will be allocated here if using wl_drm
      */
     getServerProtocolsInfo(display->nativeDpy, &protocols);
+
+    // Check if the server is running on an NVIDIA device. This will also make
+    // sure that the device node that we're looking at is a render node,
+    // regardless of which node the server sends back.
+    isServerNV = checkNvidiaDrmDevice(&protocols);
+    if (!usePrimeRenderOffload && requestedDevice == EGL_NO_DEVICE_EXT) {
+        /*
+         * We're not configured to use any sort of GPU offloading, so we only
+         * support this display if the server is running on an NVIDIA GPU. Do
+         * this early, before we call eglQueryDevicesEXT. eglQueryDevicesEXT
+         * might have to power on the GPU's, which can be very slow.
+         */
+        if (!isServerNV) {
+            err = EGL_SUCCESS;
+            goto fail;
+        }
+    }
 
     if (!protocols.hasDrm || (!protocols.hasEglStream && !protocols.hasDmaBuf)) {
         goto fail;
@@ -832,11 +894,6 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
      */
     if (!pData->egl.queryDevices(numDevices, eglDeviceList, &numDevices) || numDevices == 0) {
         goto fail;
-    }
-
-    primeRenderOffloadStr = getenv("__NV_PRIME_RENDER_OFFLOAD");
-    if (primeRenderOffloadStr && !strcmp(primeRenderOffloadStr, "1")) {
-        usePrimeRenderOffload = EGL_TRUE;
     }
 
     // Try to find the device that the compositor is running on.

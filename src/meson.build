@@ -9,6 +9,7 @@ if cc.has_argument('-Wpedantic')
 endif
 
 wl_protos = dependency('wayland-protocols', version: '>= 1.8')
+libdrm = dependency('libdrm')
 wl_protos_dir = wl_protos.get_pkgconfig_variable('pkgdatadir')
 wl_dmabuf_xml = join_paths(wl_protos_dir, 'unstable', 'linux-dmabuf', 'linux-dmabuf-unstable-v1.xml')
 wp_presentation_time_xml = join_paths(wl_protos_dir, 'stable', 'presentation-time', 'presentation-time.xml')
@@ -66,6 +67,7 @@ egl_wayland = library('nvidia-egl-wayland',
         wayland_client,
         wayland_egl_backend,
         threads,
+        libdrm,
     ],
     include_directories : inc,
     version : meson.project_version(),
