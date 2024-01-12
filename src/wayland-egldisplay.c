@@ -39,17 +39,23 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <xf86drm.h>
+#include <dlfcn.h>
 
 typedef struct WlServerProtocolsRec {
     EGLBoolean hasEglStream;
     EGLBoolean hasDmaBuf;
-    EGLBoolean hasDrm;
-    struct wl_drm *wldrm;
+    struct zwp_linux_dmabuf_v1 *wlDmaBuf;
+    dev_t devId;
+
+    struct wl_drm *wlDrm;
     char *drm_name;
 } WlServerProtocols;
 
 /* TODO: Make global display lists hang off platform data */
 static struct wl_list wlEglDisplayList = WL_LIST_INITIALIZER(&wlEglDisplayList);
+
+static bool getDeviceFromDevIdInitialised = false;
+static int (*getDeviceFromDevId)(dev_t dev_id, uint32_t flags, drmDevice **device) = NULL;
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 {
@@ -501,6 +507,96 @@ static const struct wl_drm_listener drmListener = {
 
 
 static void
+dmabuf_feedback_check_main_device(void *data,
+                            struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                            struct wl_array *dev)
+{
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
+    (void) dmabuf_feedback;
+
+    assert(dev->size == sizeof(dev_t));
+    memcpy(&protocols->devId, dev->data, sizeof(dev_t));
+}
+
+static void
+dmabuf_feedback_check_tranche_target_device(void *data,
+                                      struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                                      struct wl_array *dev)
+{
+    (void) data;
+    (void) dmabuf_feedback;
+    (void) dev;
+}
+
+static void
+dmabuf_feedback_check_tranche_flags(void *data,
+                              struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                              uint32_t flags)
+{
+    (void) data;
+    (void) dmabuf_feedback;
+    (void) flags;
+}
+
+static void
+dmabuf_feedback_check_tranche_formats(void *data,
+                                struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                                struct wl_array *indices)
+{
+    (void) data;
+    (void) dmabuf_feedback;
+    (void) indices;
+}
+
+static void
+dmabuf_feedback_check_tranche_done(void *data,
+                             struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
+{
+    (void) data;
+    (void) dmabuf_feedback;
+}
+
+static void
+dmabuf_feedback_check_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
+{
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
+    (void) dmabuf_feedback;
+
+    assert(protocols->devId != 0);
+    drmDevice *drm_device;
+    assert(getDeviceFromDevId);
+    if (getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
+        if (drm_device->available_nodes & (1 << DRM_NODE_RENDER)) {
+            protocols->drm_name = strdup(drm_device->nodes[DRM_NODE_RENDER]);
+        }
+
+        drmFreeDevice(&drm_device);
+    }
+}
+
+static void
+dmabuf_feedback_check_format_table(void *data,
+                             struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
+                             int32_t fd, uint32_t size)
+{
+    (void) data;
+    (void) dmabuf_feedback;
+    (void) fd;
+    (void) size;
+}
+
+static const struct zwp_linux_dmabuf_feedback_v1_listener dmabuf_feedback_check_listener = {
+        .done = dmabuf_feedback_check_done,
+        .format_table = dmabuf_feedback_check_format_table,
+        .main_device = dmabuf_feedback_check_main_device,
+        .tranche_done = dmabuf_feedback_check_tranche_done,
+        .tranche_target_device = dmabuf_feedback_check_tranche_target_device,
+        .tranche_formats = dmabuf_feedback_check_tranche_formats,
+        .tranche_flags = dmabuf_feedback_check_tranche_flags,
+};
+
+
+static void
 registry_handle_global_check_protocols(
                        void *data,
                        struct wl_registry *registry,
@@ -520,12 +616,14 @@ registry_handle_global_check_protocols(
     if ((strcmp(interface, "zwp_linux_dmabuf_v1") == 0) &&
         (version >= 3)) {
         protocols->hasDmaBuf = EGL_TRUE;
+        /* Version 4 introduced default_feedback which allows us to determine the device used by the compositor */
+        if (version >= 4) {
+            protocols->wlDmaBuf = wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 4);
+        }
     }
 
     if ((strcmp(interface, "wl_drm") == 0) && (version >= 2)) {
-        protocols->hasDrm = EGL_TRUE;
-        protocols->wldrm = wl_registry_bind(registry, name, &wl_drm_interface, 2);
-        wl_drm_add_listener(protocols->wldrm, &drmListener, protocols);
+        protocols->wlDrm = wl_registry_bind(registry, name, &wl_drm_interface, 2);
     }
 }
 
@@ -670,48 +768,79 @@ EGLBoolean wlEglTerminateHook(EGLDisplay dpy)
     return res;
 }
 
-static void getServerProtocolsInfo(struct wl_display *nativeDpy,
+static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
                                    WlServerProtocols *protocols)
 {
     struct wl_display     *wrapper      = NULL;
     struct wl_registry    *wlRegistry   = NULL;
     struct wl_event_queue *queue        = wl_display_create_queue(nativeDpy);
     int                    ret          = 0;
+    bool                   result       = false;
     const struct wl_registry_listener registryListener = {
         registry_handle_global_check_protocols,
         registry_handle_global_remove
     };
 
     if (queue == NULL) {
-        return;
+        goto done;
     }
 
     wrapper = wl_proxy_create_wrapper(nativeDpy);
+    if (wrapper == NULL) {
+        goto done;
+    }
     wl_proxy_set_queue((struct wl_proxy *)wrapper, queue);
 
     /* Listen to wl_registry events and make a roundtrip in order to find the
      * wl_eglstream_display global object.
      */
     wlRegistry = wl_display_get_registry(wrapper);
-    wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
+    if (wlRegistry == NULL) {
+        goto done;
+    }
     ret = wl_registry_add_listener(wlRegistry,
                                    &registryListener,
                                    protocols);
     if (ret == 0) {
         wl_display_roundtrip_queue(nativeDpy, queue);
-        if (protocols->hasDrm) {
+        if (!getDeviceFromDevIdInitialised) {
+            getDeviceFromDevId = dlsym(RTLD_DEFAULT, "drmGetDeviceFromDevId");
+            getDeviceFromDevIdInitialised = true;
+        }
+
+        if (protocols->wlDmaBuf && getDeviceFromDevId) {
+            struct zwp_linux_dmabuf_feedback_v1 *default_feedback
+                    = zwp_linux_dmabuf_v1_get_default_feedback(protocols->wlDmaBuf);
+            if (default_feedback) {
+                zwp_linux_dmabuf_feedback_v1_add_listener(default_feedback, &dmabuf_feedback_check_listener, protocols);
+                wl_display_roundtrip_queue(nativeDpy, queue);
+                zwp_linux_dmabuf_feedback_v1_destroy(default_feedback);
+            }
+        } else if (protocols->wlDrm) {
+            wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
             wl_display_roundtrip_queue(nativeDpy, queue);
-            /* destroy our wl_drm object */
-            wl_drm_destroy(protocols->wldrm);
+        }
+        result = protocols->drm_name != NULL;
+
+        if (protocols->wlDmaBuf) {
+            zwp_linux_dmabuf_v1_destroy(protocols->wlDmaBuf);
+        }
+        if (protocols->wlDrm) {
+            wl_drm_destroy(protocols->wlDrm);
         }
     }
 
+done:
+    if (wrapper) {
+        wl_proxy_wrapper_destroy(wrapper);
+    }
     if (wlRegistry) {
         wl_registry_destroy(wlRegistry);
     }
     if (queue) {
         wl_event_queue_destroy(queue);
     }
+    return result;
 }
 
 static EGLBoolean checkNvidiaDrmDevice(WlServerProtocols *protocols)
@@ -879,7 +1008,10 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
      * and bind to wl_drm to get the device name.
      * protocols.drm_name will be allocated here if using wl_drm
      */
-    getServerProtocolsInfo(display->nativeDpy, &protocols);
+    if (!getServerProtocolsInfo(display->nativeDpy, &protocols)) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
 
     // Check if the server is running on an NVIDIA device. This will also make
     // sure that the device node that we're looking at is a render node,
@@ -898,7 +1030,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         }
     }
 
-    if (!protocols.hasDrm || (!protocols.hasEglStream && !protocols.hasDmaBuf)) {
+    if (!protocols.hasEglStream && !protocols.hasDmaBuf) {
         goto fail;
     }
 
