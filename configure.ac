@@ -61,6 +61,9 @@ LT_INIT
 
 # Checks for libraries.
 AX_PTHREAD()
+AC_CHECK_LIB([dl], [dlsym],
+             [],
+             [AC_MSG_ERROR("dlsym is needed to compile wayland-egldisplay")])
 PKG_CHECK_MODULES([EGL_EXTERNAL_PLATFORM], [eglexternalplatform >= ${EGL_EXTERNAL_PLATFORM_MIN_VERSION} eglexternalplatform < ${EGL_EXTERNAL_PLATFORM_MAX_VERSION}])
 PKG_CHECK_MODULES([WAYLAND], [wayland-server wayland-client wayland-egl-backend >= 3])
 PKG_CHECK_MODULES([LIBDRM], [libdrm])

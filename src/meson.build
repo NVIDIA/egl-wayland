@@ -1,3 +1,9 @@
+if not cc.has_function('dlsym')
+    libdl = cc.find_library('dl')
+else
+    libdl = []
+endif
+
 add_project_arguments('-Wall', language : 'c')
 add_project_arguments('-Werror', language : 'c')
 add_project_arguments('-fvisibility=hidden', language : 'c')
@@ -68,6 +74,7 @@ egl_wayland = library('nvidia-egl-wayland',
         wayland_egl_backend,
         threads,
         libdrm,
+        libdl,
     ],
     include_directories : inc,
     version : meson.project_version(),
