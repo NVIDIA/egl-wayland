@@ -1186,7 +1186,7 @@ fail:
     free(eglDeviceList);
     free(protocols.drm_name);
 
-    if (display->ownNativeDpy) {
+    if (display && display->ownNativeDpy) {
         wl_display_disconnect(display->nativeDpy);
     }
     free(display);
