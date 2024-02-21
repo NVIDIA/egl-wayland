@@ -19,6 +19,7 @@ libdrm = dependency('libdrm')
 wl_protos_dir = wl_protos.get_pkgconfig_variable('pkgdatadir')
 wl_dmabuf_xml = join_paths(wl_protos_dir, 'unstable', 'linux-dmabuf', 'linux-dmabuf-unstable-v1.xml')
 wp_presentation_time_xml = join_paths(wl_protos_dir, 'stable', 'presentation-time', 'presentation-time.xml')
+wl_drm_syncobj_xml = join_paths(wl_protos_dir, 'staging', 'linux-drm-syncobj', 'linux-drm-syncobj-v1.xml')
 
 client_header = generator(prog_scanner,
     output : '@BASENAME@-client-protocol.h',
@@ -64,6 +65,9 @@ src += code.process(wl_dmabuf_xml)
 
 src += client_header.process(wp_presentation_time_xml)
 src += code.process(wp_presentation_time_xml)
+
+src += client_header.process(wl_drm_syncobj_xml)
+src += code.process(wl_drm_syncobj_xml)
 
 egl_wayland = library('nvidia-egl-wayland',
     src,

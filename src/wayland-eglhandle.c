@@ -111,6 +111,8 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
     GET_PROC(clientWaitSync,              eglClientWaitSyncKHR);
     GET_PROC(signalSync,                  eglSignalSyncKHR);
     GET_PROC(destroySync,                 eglDestroySyncKHR);
+    GET_PROC(createSync,                  eglCreateSyncKHR);
+    GET_PROC(dupNativeFenceFD,            eglDupNativeFenceFDANDROID);
 
     /* Stream flush */
     GET_PROC(streamFlush,                 eglStreamFlushNV);

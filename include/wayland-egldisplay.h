@@ -121,6 +121,9 @@ typedef struct WlEglDmaBufFeedbackRec {
 typedef struct WlEglDisplayRec {
     WlEglDeviceDpy *devDpy;
 
+    /* Supports EGL_ANDROID_native_fence_sync */
+    int supports_native_fence_sync;
+
     EGLBoolean         ownNativeDpy;
     struct wl_display *nativeDpy;
 
@@ -128,6 +131,7 @@ typedef struct WlEglDisplayRec {
     struct wl_eglstream_display    *wlStreamDpy;
     struct wl_eglstream_controller *wlStreamCtl;
     struct zwp_linux_dmabuf_v1     *wlDmaBuf;
+    struct wp_linux_drm_syncobj_manager_v1 *wlDrmSyncobj;
     unsigned int                    wlStreamCtlVer;
     struct wp_presentation         *wpPresentation;
     struct wl_event_queue          *wlEventQueue;
@@ -138,6 +142,9 @@ typedef struct WlEglDisplayRec {
     } caps;
 
     WlEglPlatformData *data;
+
+    /* DRM device in use */
+    int drmFd;
 
     EGLBoolean useInitRefCount;
     EGLDeviceEXT requestedDevice;

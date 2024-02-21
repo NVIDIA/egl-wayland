@@ -32,6 +32,7 @@
 #include "wayland-drm-client-protocol.h"
 #include "wayland-drm.h"
 #include "presentation-time-client-protocol.h"
+#include "linux-drm-syncobj-v1-client-protocol.h"
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
@@ -454,6 +455,12 @@ registry_handle_global(void *data,
                                                    name,
                                                    &wp_presentation_interface,
                                                    version);
+    } else if (strcmp(interface, "wp_linux_drm_syncobj_manager_v1") == 0 &&
+               display->supports_native_fence_sync) {
+        display->wlDrmSyncobj = wl_registry_bind(registry,
+                                                 name,
+                                                 &wp_linux_drm_syncobj_manager_v1_interface,
+                                                 version);
     }
 }
 
@@ -738,6 +745,10 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
             wp_presentation_destroy(display->wpPresentation);
             display->wpPresentation = NULL;
         }
+        if (display->wlDrmSyncobj) {
+            wp_linux_drm_syncobj_manager_v1_destroy(display->wlDrmSyncobj);
+            display->wlDrmSyncobj = NULL;
+        }
         if (display->wlDmaBuf) {
             zwp_linux_dmabuf_v1_destroy(display->wlDmaBuf);
             display->wlDmaBuf = NULL;
@@ -926,6 +937,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     EGLDeviceEXT requestedDevice = EGL_NO_DEVICE_EXT;
     EGLBoolean usePrimeRenderOffload = EGL_FALSE;
     EGLBoolean isServerNV;
+    const char *drmName = NULL;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -1156,7 +1168,6 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         display->primeRenderOffload = EGL_TRUE;
     }
 
-
     display->devDpy = wlGetInternalDisplay(pData, eglDevice);
     if (display->devDpy == NULL) {
         goto fail;
@@ -1168,6 +1179,17 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     display->refCount = 1;
     WL_LIST_INIT(&display->wlEglSurfaceList);
 
+    /* Get the DRM device in use */
+    drmName = display->data->egl.queryDeviceString(display->devDpy->eglDevice,
+                                                   EGL_DRM_DEVICE_FILE_EXT);
+    if (!drmName) {
+        goto fail;
+    }
+
+    display->drmFd = open(drmName, O_RDWR | O_CLOEXEC);
+    if (display->drmFd < 0) {
+        goto fail;
+    }
 
     // The newly created WlEglDisplay has been set up properly, insert it
     // in wlEglDisplayList.
@@ -1205,6 +1227,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     struct wl_display *wrapper = NULL;
     EGLint             err     = EGL_SUCCESS;
     int                ret     = 0;
+    const char *dev_exts = NULL;
 
     if (!display) {
         return EGL_FALSE;
@@ -1233,6 +1256,11 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         pthread_mutex_unlock(&display->mutex);
         wlEglReleaseDisplay(display);
         return EGL_FALSE;
+    }
+
+    dev_exts = display->data->egl.queryString(display->devDpy->eglDisplay, EGL_EXTENSIONS);
+    if (dev_exts && wlEglFindExtension("EGL_ANDROID_native_fence_sync", dev_exts)) {
+        display->supports_native_fence_sync = true;
     }
 
     // Set the initCount to 1. If something goes wrong, then terminateDisplay
@@ -1353,6 +1381,7 @@ WlEglDisplay *wlEglAcquireDisplay(EGLDisplay dpy) {
 static void wlEglUnrefDisplay(WlEglDisplay *display) {
     if (--display->refCount == 0) {
         wlEglMutexDestroy(&display->mutex);
+        close(display->drmFd);
         free(display);
     }
 }
