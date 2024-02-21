@@ -51,6 +51,14 @@ typedef struct WlEglStreamImageRec {
     struct wl_buffer       *buffer;
     EGLBoolean              attached;
     struct wl_list          acquiredLink;
+
+    struct wp_linux_drm_syncobj_timeline_v1 *wlReleaseTimeline;
+    uint32_t                drmSyncobjHandle;
+    int                     releasePending;
+    /* Latest release point the compositor will signal with explicit sync */
+    uint64_t                releasePoint;
+    /* Cached acquire EGLSync from acquireImage */
+    EGLSyncKHR              acquireSync;
 } WlEglStreamImage;
 
 typedef struct WlEglSurfaceCtxRec {
@@ -151,6 +159,13 @@ struct WlEglSurfaceRec {
     EGLBoolean isResized;
 
     WlEglDmaBufFeedback feedback;
+
+    /* per-surface Explicit Sync objects */
+    struct wp_linux_drm_syncobj_surface_v1 *wlSyncobjSurf;
+    struct wp_linux_drm_syncobj_timeline_v1 *wlAcquireTimeline;
+    uint32_t drmSyncobjHandle;
+    /* Last acquire point used. This starts at 1, zero means invalid.  */
+    uint64_t syncPoint;
 };
 
 void wlEglReallocSurface(WlEglDisplay *display,
@@ -184,6 +199,9 @@ EGLBoolean wlEglQueryNativeResourceHook(EGLDisplay dpy,
                                         void *nativeResource,
                                         EGLint attribute,
                                         int *value);
+
+EGLBoolean
+wlEglSurfaceCheckReleasePoints(WlEglDisplay *display, WlEglSurface *surface);
 
 EGLBoolean wlEglSendDamageEvent(WlEglSurface *surface,
                                 struct wl_event_queue *queue);

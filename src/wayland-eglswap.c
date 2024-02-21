@@ -148,6 +148,7 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
         } else {
             wlEglCreateFrameSync(surface);
             res = wlEglSendDamageEvent(surface, surface->wlEventQueue);
+            wlEglSurfaceCheckReleasePoints(display, surface);
         }
     }
 
