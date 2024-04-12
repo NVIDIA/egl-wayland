@@ -96,7 +96,8 @@ EGLBoolean loadEGLExternalPlatform(int major, int minor,
                                    EGLExtPlatform *platform)
 {
     if (!platform ||
-        !EGL_EXTERNAL_PLATFORM_VERSION_CHECK(major, minor)) {
+        !EGL_EXTERNAL_PLATFORM_VERSION_CMP(major, minor,
+            WAYLAND_EXTERNAL_VERSION_MAJOR, WAYLAND_EXTERNAL_VERSION_MINOR)) {
         return EGL_FALSE;
     }
 
