@@ -8,6 +8,7 @@ add_project_arguments('-Wall', language : 'c')
 add_project_arguments('-Werror', language : 'c')
 add_project_arguments('-fvisibility=hidden', language : 'c')
 add_project_arguments('-DWL_HIDE_DEPRECATED', language : 'c')
+add_project_arguments('-D_GNU_SOURCE', language : 'c')
 add_project_link_arguments('-Wl,-Bsymbolic', language : 'c')
 
 if cc.has_argument('-Wpedantic')

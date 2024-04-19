@@ -15,6 +15,8 @@ AC_CONFIG_AUX_DIR([build])
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
 
+AC_GNU_SOURCE
+
 AC_SUBST([WAYLAND_EXTERNAL_MAJOR_VERSION], [wayland_eglstream_major_version])
 AC_SUBST([WAYLAND_EXTERNAL_MINOR_VERSION], [wayland_eglstream_minor_version])
 AC_SUBST([WAYLAND_EXTERNAL_MICRO_VERSION], [wayland_eglstream_micro_version])
