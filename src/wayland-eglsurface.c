@@ -2351,7 +2351,9 @@ static EGLBoolean validateSurfaceAttrib(EGLAttrib attrib, EGLAttrib value)
         return EGL_FALSE;
 
     case EGL_PRESENT_OPAQUE_EXT:
-        return EGL_TRUE;
+        return (value == EGL_TRUE ||
+                value == EGL_FALSE) ? EGL_TRUE :
+                                      EGL_FALSE;
 
     /* If attribute is supported/unsupported for both EGL_WINDOW_BIT and
      * EGL_STREAM_BIT_KHR, then that will be handled inside the actual
@@ -2397,7 +2399,7 @@ static EGLint assignWlEglSurfaceAttribs(WlEglSurface *surface,
     if (attribs) {
         for (i = 0; attribs[i] != EGL_NONE; i += 2) {
             if (attribs[i] == EGL_PRESENT_OPAQUE_EXT) {
-                surface->presentOpaque = EGL_TRUE;
+                surface->presentOpaque = attribs[i + 1];
                 continue;
             }
             if ((attribs[i] != EGL_RENDER_BUFFER) &&
