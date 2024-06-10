@@ -1179,12 +1179,17 @@ wlEglSurfaceCheckReleasePoints(WlEglDisplay *display, WlEglSurface *surface)
      * since the streams internal code expects to have at least one buffer placed
      * back on the release (internally called returns) queue.
      *
-     * We only wait indefinitely when there are at least two buffers pending.
-     * One of the pending buffers will be in use by the compositor, and the
-     * other should have its release point signaled. Without this we might block
-     * after the first buffer has been committed.
+     * We only wait indefinitely when all but one buffers are pending. There are
+     * four total buffers:
+     *   1. One owned by the driver (as per above)
+     *   2. One we just committed and sent to the compositor
+     *   3. One owned by compositor, queued for scanout
+     *   4. One owned by compositor, in process of releasing
+     *
+     * Not all compositors will hold 3 and 4 indefinitely, although Kwin does
+     * at certain times.
      */
-    timeout = numSyncPoints >= 2 ? INT64_MAX : 0;
+    timeout = numSyncPoints >= 3 ? INT64_MAX : 0;
 
     /*
      * The Linux docs say that DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE should be
@@ -2713,8 +2718,29 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     surface->isDestroyed = EGL_FALSE;
     surface->syncPoint = 1;
     // FIFO_LENGTH == 1 to set FIFO mode, FIFO_LENGTH == 0 to set MAILBOX mode
+    // We set two here however to bump the "swapchain" count to 4 on Wayland.
+    // This is done to better match what Mesa does, as apparently 4 is the
+    // expectation on wayland.
+    // https://gitlab.freedesktop.org/mesa/mesa/-/issues/6249#note_1328923
+    //
+    // The problem users are running into is that we always have to advance to
+    // a new buffer (in PresentCore) because the driver always expects to be
+    // incremented to the next valid buffer as part of swapbuffers.  So
+    // currently it seems one of the three images will always be owned by the
+    // driver (either the buffer currently/just rendered to, or the one we just
+    // advanced to for future rendering)
+    //
+    // So the three buffers are used up by:
+    //   1. One buffer owned by the driver
+    //   2. One buffer that just got committed and shared with the compositor
+    //   3. One buffer owned by the compositor, pending a release
+    //
+    // For whatever reason Kwin is holding onto 2 and 3 indefinitely when the
+    // dock gets hidden, and we hold onto 1 and try waiting for one of the
+    // other two to become free. We need a fourth to allow us to continue feeding
+    // the driver .
     surface->fifoLength = (display->devDpy->exts.stream_fifo_synchronous &&
-                           display->devDpy->exts.stream_sync) ? 1 : 0;
+                           display->devDpy->exts.stream_sync) ? 2 : 0;
 
     // Create per surface wayland queue
     surface->wlEventQueue = wl_display_create_queue(display->nativeDpy);
