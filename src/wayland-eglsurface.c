@@ -1588,7 +1588,7 @@ EGLint wlEglHandleImageStreamEvents(WlEglSurface *surface)
     EGLAttrib             aux;
     EGLenum               event;
     EGLint                err = EGL_SUCCESS;
-    EGLint                timeout = surface->wlSyncobjSurf ? EGL_FOREVER : 0;
+    EGLTime               timeout = surface->wlSyncobjSurf ? EGL_FOREVER : 0;
 
     if (surface->ctx.wlStreamResource) {
         /* Not a local stream */
