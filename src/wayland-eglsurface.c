@@ -2188,12 +2188,14 @@ WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
     if (!wlEglInitializeMutex(&surface->mutexFrameSync)) {
         pthread_mutex_unlock(&display->mutex);
         wlEglReleaseDisplay(display);
+        free(surface);
         return EGL_FALSE;
     }
 
     if (pthread_cond_init(&surface->condFrameSync, NULL)) {
         pthread_mutex_unlock(&display->mutex);
         wlEglReleaseDisplay(display);
+        free(surface);
         return EGL_FALSE;
     }
 
