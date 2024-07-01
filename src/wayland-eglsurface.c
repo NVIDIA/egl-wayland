@@ -339,6 +339,8 @@ damage_thread(void *args)
         // If not done, keep handling frames
         if (ok) {
 
+            pthread_mutex_lock(&surface->mutexFrameSync);
+
             // If there's an unprocessed frame ready, send damage event
             if (surface->ctx.framesFinished !=
                 surface->ctx.framesProcessed) {
@@ -347,16 +349,12 @@ damage_thread(void *args)
                                           surface->ctx.eglStream);
                 }
 
-                pthread_mutex_lock(&surface->mutexFrameSync);
-
                 wlEglCreateFrameSync(surface);
 
                 ok = wlEglSendDamageEvent(surface, queue);
                 surface->ctx.framesProcessed++;
 
                 pthread_cond_signal(&surface->condFrameSync);
-
-                pthread_mutex_unlock(&surface->mutexFrameSync);
             }
 
             // Otherwise, wait for sync to trigger
@@ -366,6 +364,8 @@ damage_thread(void *args)
                                                surface->ctx.damageThreadSync,
                                                0, EGL_FOREVER_KHR));
             }
+
+            pthread_mutex_unlock(&surface->mutexFrameSync);
         }
     }
 
