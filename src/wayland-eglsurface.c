@@ -280,8 +280,13 @@ wlEglSendDamageEvent(WlEglSurface *surface, struct wl_event_queue *queue)
         }
     }
 
-    wl_surface_damage(surface->wlSurface, 0, 0,
-                      surface->width, surface->height);
+    if (wl_surface_get_version(surface->wlSurface) >= WL_SURFACE_DAMAGE_BUFFER_SINCE_VERSION) {
+        wl_surface_damage_buffer(surface->wlSurface, 0, 0,
+                                 surface->width, surface->height);
+    } else {
+        wl_surface_damage(surface->wlSurface, 0, 0,
+                          INT32_MAX, INT32_MAX);
+    }
     wl_surface_commit(surface->wlSurface);
     surface->ctx.isAttached = EGL_TRUE;
 
