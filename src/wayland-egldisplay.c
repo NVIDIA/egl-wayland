@@ -569,7 +569,6 @@ dmabuf_feedback_check_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmab
     WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
 
-    assert(protocols->devId != 0);
     drmDevice *drm_device;
     assert(getDeviceFromDevId);
     if (getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
