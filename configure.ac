@@ -3,8 +3,9 @@ AC_PREREQ([2.64])
 m4_define([wayland_eglstream_major_version], [1])
 m4_define([wayland_eglstream_minor_version], [1])
 m4_define([wayland_eglstream_micro_version], [13])
+m4_define([wayland_eglstream_patch_version], [1])
 m4_define([wayland_eglstream_version],
-          [wayland_eglstream_major_version.wayland_eglstream_minor_version.wayland_eglstream_micro_version])
+          [wayland_eglstream_major_version.wayland_eglstream_minor_version.wayland_eglstream_micro_version.wayland_eglstream_patch_version])
 
 AC_INIT([wayland-eglstream],
         [wayland_eglstream_version],
