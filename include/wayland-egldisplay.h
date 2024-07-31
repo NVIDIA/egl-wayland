@@ -123,6 +123,8 @@ typedef struct WlEglDisplayRec {
 
     /* Supports EGL_ANDROID_native_fence_sync */
     int supports_native_fence_sync;
+    /* Underlying driver version is recent enough for explicit sync */
+    int supports_explicit_sync;
 
     EGLBoolean         ownNativeDpy;
     struct wl_display *nativeDpy;
