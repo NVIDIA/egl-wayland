@@ -1206,7 +1206,9 @@ wlEglSurfaceCheckReleasePoints(WlEglDisplay *display, WlEglSurface *surface)
                            DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE,
                            &firstSignaled) != 0) {
         /* A timeout is the only type of error we expect here */
+#ifdef ETIME
         assert(errno == ETIME);
+#endif
         goto end;
     }
 
