@@ -1227,8 +1227,14 @@ static void wlEglCheckDriverSyncSupport(WlEglDisplay *display)
     EGLDisplay  dpy     = display->devDpy->eglDisplay;
     EGLint      attribs[5];
     uint32_t    tmpSyncobj;
+    const char *disableExplicitSyncStr = getenv("__NV_DISABLE_EXPLICIT_SYNC");
 
-    if (!display->supports_native_fence_sync) {
+    /*
+     * Don't enable explicit sync if requested by the user or if we do not have
+     * the necessary EGL extensions.
+     */
+    if ((disableExplicitSyncStr && !strcmp(disableExplicitSyncStr, "1")) ||
+        !display->supports_native_fence_sync) {
         return;
     }
 
