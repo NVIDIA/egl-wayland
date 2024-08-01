@@ -266,19 +266,24 @@ wlEglSendDamageEvent(WlEglSurface *surface, struct wl_event_queue *queue)
             image->attached = EGL_TRUE;
         }
 
-        wl_surface_attach(surface->wlSurface,
-                          surface->ctx.currentBuffer,
-                          surface->dx,
-                          surface->dy);
-
         /*
          * Send our explicit sync acquire and release points. This needs to be done
          * as part of the surface attach as it is a protocol error to specify these
          * points without attaching a buffer in the same commit.
+         *
+         * Perform this before wl_surface_attach in case there is an error importing
+         * the syncfd at the current timeline point. If this errors out after the
+         * attach has happened then we are stuck with a protocol error from not
+         * specifying the timeline sync points.
          */
         if (!send_explicit_sync_points(surface->wlEglDpy, surface, image)) {
             return EGL_FALSE;
         }
+
+        wl_surface_attach(surface->wlSurface,
+                          surface->ctx.currentBuffer,
+                          surface->dx,
+                          surface->dy);
     }
 
     wl_surface_damage(surface->wlSurface, 0, 0,
