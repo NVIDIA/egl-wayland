@@ -1126,7 +1126,6 @@ get_release_sync(WlEglDisplay *display, WlEglStreamImage *image)
     attribs[2] = EGL_NONE;
     eglSync = data->egl.createSync(dpy, EGL_SYNC_NATIVE_FENCE_ANDROID,
                                    attribs);
-    close (syncFd);
 destroy:
     drmSyncobjDestroy(display->drmFd, tmpSyncobj);
 
@@ -1292,9 +1291,7 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
                                       surface->ctx.eglStream,
                                       &eglImage,
                                       acquireSync)) {
-        if (acquireSync != EGL_NO_SYNC_KHR) {
-            goto fail_destroy_sync;
-        }
+        goto fail_destroy_sync;
     }
 
     pthread_mutex_lock(&surface->ctx.streamImagesMutex);
