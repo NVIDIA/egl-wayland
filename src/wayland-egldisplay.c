@@ -1261,7 +1261,6 @@ static void wlEglCheckDriverSyncSupport(WlEglDisplay *display)
     attribs[4] = EGL_NONE;
     eglSync = display->data->egl.createSync(dpy, EGL_SYNC_NATIVE_FENCE_ANDROID,
                                             attribs);
-    close (syncFd);
 
     /* If the call failed then the driver version is recent enough */
     if (eglSync == EGL_NO_SYNC_KHR &&
