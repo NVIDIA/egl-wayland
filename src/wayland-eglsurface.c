@@ -2609,6 +2609,22 @@ getWlEglWindowVersionAndSurface(struct wl_egl_window *window,
     }
 }
 
+static bool
+wlEglInitializeSurfaceCommon(WlEglDisplay *display,
+                             WlEglSurface *surface,
+                             EGLConfig config)
+{
+    surface->wlEglDpy = display;
+    surface->eglConfig = config;
+    surface->syncPoint = 1;
+    surface->refCount = 1;
+    surface->isDestroyed = EGL_FALSE;
+    wl_list_init(&surface->ctx.streamImages);
+    wl_list_init(&surface->oldCtxList);
+
+    return wlEglInitializeMutex(&surface->ctx.streamImagesMutex);
+}
+
 EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
                                                 EGLConfig config,
                                                 void *nativeWin,
@@ -2669,6 +2685,11 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
         goto fail;
     }
 
+    if (!wlEglInitializeSurfaceCommon(display, surface, config)) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
     if (!wlEglInitializeMutex(&surface->mutexLock)) {
         err = EGL_BAD_ALLOC;
         goto fail;
@@ -2679,28 +2700,16 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
         goto fail;
     }
 
-    if (!wlEglInitializeMutex(&surface->ctx.streamImagesMutex)) {
-        err = EGL_BAD_ALLOC;
-        goto fail;
-    }
-
     if (pthread_cond_init(&surface->condFrameSync, NULL)) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
 
-    wl_list_init(&surface->ctx.streamImages);
-
-    surface->wlEglDpy = display;
-    surface->eglConfig = config;
     surface->wlEglWin = window;
     surface->ctx.eglStream = EGL_NO_STREAM_KHR;
     surface->ctx.eglSurface = EGL_NO_SURFACE;
     surface->ctx.isOffscreen = EGL_FALSE;
     surface->isSurfaceProducer = EGL_TRUE;
-    surface->refCount = 1;
-    surface->isDestroyed = EGL_FALSE;
-    surface->syncPoint = 1;
     // FIFO_LENGTH == 1 to set FIFO mode, FIFO_LENGTH == 0 to set MAILBOX mode
     // We set two here however to bump the "swapchain" count to 4 on Wayland.
     // This is done to better match what Mesa does, as apparently 4 is the
@@ -2732,7 +2741,6 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     getWlEglWindowVersionAndSurface(window,
                                     &surface->wlEglWinVer,
                                     &surface->wlSurface);
-    wl_list_init(&surface->oldCtxList);
 
     err = assignWlEglSurfaceAttribs(surface, attribs);
     if (err != EGL_SUCCESS) {
@@ -2883,18 +2891,13 @@ EGLSurface wlEglCreatePbufferSurfaceHook(EGLDisplay dpy,
         goto fail;
     }
 
-    if (!wlEglInitializeMutex(&surface->mutexLock)) {
+    if (!wlEglInitializeSurfaceCommon(display, surface, config)) {
         err = EGL_BAD_ALLOC;
         goto fail;
     }
 
-    surface->wlEglDpy = display;
-    surface->eglConfig = config;
     surface->ctx.eglSurface = surf;
     surface->ctx.isOffscreen = EGL_TRUE;
-    surface->refCount = 1;
-    surface->isDestroyed = EGL_FALSE;
-    wl_list_init(&surface->oldCtxList);
 
     wl_list_insert(&display->wlEglSurfaceList, &surface->link);
     pthread_mutex_unlock(&display->mutex);
