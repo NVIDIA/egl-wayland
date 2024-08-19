@@ -12,6 +12,7 @@ libnvidia_egl_wayland_la_CFLAGS =       \
 # Required library flags
 libnvidia_egl_wayland_la_CFLAGS +=      \
     $(PTHREAD_CFLAGS)                   \
+    $(EGL_CFLAGS)                       \
     $(EGL_EXTERNAL_PLATFORM_CFLAGS)     \
     $(WAYLAND_CFLAGS)                   \
     $(LIBDRM_CFLAGS)                    \
