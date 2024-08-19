@@ -18,6 +18,8 @@ wayland_eglstream_major_version = ver_arr[0]
 wayland_eglstream_minor_version = ver_arr[1]
 wayland_eglstream_micro_version = ver_arr[2]
 
+egl = dependency('egl', version : ['>=1.5', '<2'])
+egl_headers = egl.partial_dependency(includes : true, compile_args : true)
 eglexternalplatform = dependency('eglexternalplatform', version : ['>=1.1', '<2'])
 wayland_server = dependency('wayland-server')
 wayland_client = dependency('wayland-client')

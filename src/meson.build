@@ -73,6 +73,7 @@ src += code.process(wl_drm_syncobj_xml)
 egl_wayland = library('nvidia-egl-wayland',
     src,
     dependencies : [
+        egl_headers,
         eglexternalplatform,
         wayland_server,
         wayland_client,
