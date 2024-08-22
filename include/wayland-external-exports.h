@@ -53,7 +53,7 @@
  #define WAYLAND_EXTERNAL_VERSION_MINOR                      0
 #endif
 
-#define WAYLAND_EXTERNAL_VERSION_MICRO                       15
+#define WAYLAND_EXTERNAL_VERSION_MICRO                       16
 
 
 #define EGL_EXTERNAL_PLATFORM_VERSION_MAJOR WAYLAND_EXTERNAL_VERSION_MAJOR
