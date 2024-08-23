@@ -147,7 +147,7 @@ EGLBoolean wlEglSwapBuffersWithDamageHook(EGLDisplay eglDisplay, EGLSurface eglS
             surface->ctx.framesProduced++;
         } else {
             wlEglCreateFrameSync(surface);
-            res = wlEglSendDamageEvent(surface, surface->wlEventQueue);
+            res = wlEglSendDamageEvent(surface, surface->wlEventQueue, rects, n_rects);
             wlEglSurfaceCheckReleasePoints(display, surface);
         }
     }
@@ -434,7 +434,7 @@ EGLBoolean wlEglPostPresentExport2(WlEglSurface *surface,
         surface->ctx.framesProduced++;
     } else {
         wlEglCreateFrameSync(surface);
-        res = wlEglSendDamageEvent(surface, surface->wlEventQueue);
+        res = wlEglSendDamageEvent(surface, surface->wlEventQueue, NULL, 0);
     }
 
     // Release wlEglSurface lock.
