@@ -206,7 +206,9 @@ EGLBoolean
 wlEglSurfaceCheckReleasePoints(WlEglDisplay *display, WlEglSurface *surface);
 
 EGLBoolean wlEglSendDamageEvent(WlEglSurface *surface,
-                                struct wl_event_queue *queue);
+                                struct wl_event_queue *queue,
+                                EGLint *rects,
+                                EGLint n_rects);
 
 void wlEglCreateFrameSync(WlEglSurface *surface);
 EGLint wlEglWaitFrameSync(WlEglSurface *surface);
