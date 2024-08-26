@@ -568,9 +568,10 @@ static void
 dmabuf_feedback_check_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
 {
     WlServerProtocols *protocols = (WlServerProtocols *)data;
+    drmDevice *drm_device;
+
     (void) dmabuf_feedback;
 
-    drmDevice *drm_device;
     assert(getDeviceFromDevId);
     if (getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
         if (drm_device->available_nodes & (1 << DRM_NODE_RENDER)) {
