@@ -41,7 +41,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <errno.h>
-#include <libdrm/drm_fourcc.h>
+#include <drm_fourcc.h>
 #include <sys/stat.h>
 #include <xf86drm.h>
 #include <stdio.h>
