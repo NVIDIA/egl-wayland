@@ -301,7 +301,7 @@ wlEglSendDamageEvent(WlEglSurface *surface,
             wl_surface_damage_buffer(surface->wlSurface, rect[0], inv_y, rect[2], rect[3]);
         }
     } else {
-        wl_surface_damage(surface->wlSurface, 0, 0, UINT32_MAX, UINT32_MAX);
+        wl_surface_damage(surface->wlSurface, 0, 0, INT32_MAX, INT32_MAX);
     }
 
 
