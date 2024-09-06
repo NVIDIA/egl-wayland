@@ -485,6 +485,7 @@ static void wl_drm_device(void *data, struct wl_drm *wl_drm, const char *name)
     WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) wl_drm;
 
+    free(protocols->drm_name);
     protocols->drm_name = strdup(name);
 }
 
@@ -575,6 +576,7 @@ dmabuf_feedback_check_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmab
     assert(getDeviceFromDevId);
     if (getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
         if (drm_device->available_nodes & (1 << DRM_NODE_RENDER)) {
+            free(protocols->drm_name);
             protocols->drm_name = strdup(drm_device->nodes[DRM_NODE_RENDER]);
         }
 
@@ -632,6 +634,7 @@ registry_handle_global_check_protocols(
 
     if ((strcmp(interface, "wl_drm") == 0) && (version >= 2)) {
         protocols->wlDrm = wl_registry_bind(registry, name, &wl_drm_interface, 2);
+        wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
     }
 }
 
@@ -828,10 +831,9 @@ static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
                 wl_display_roundtrip_queue(nativeDpy, queue);
                 zwp_linux_dmabuf_feedback_v1_destroy(default_feedback);
             }
-        } else if (protocols->wlDrm) {
-            wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
-            wl_display_roundtrip_queue(nativeDpy, queue);
         }
+
+        /* Check that one of our two protocols provided the device name */
         result = protocols->drm_name != NULL;
 
         if (protocols->wlDmaBuf) {
