@@ -268,6 +268,8 @@ wlEglSendDamageEvent(WlEglSurface *surface,
         if (image) {
             surface->ctx.currentBuffer = image->buffer;
             image->attached = EGL_TRUE;
+        } else {
+            return EGL_FALSE;
         }
 
         /*
