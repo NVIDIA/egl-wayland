@@ -265,10 +265,12 @@ wlEglSendDamageEvent(WlEglSurface *surface,
         }
 
         image = pop_acquired_image(surface);
-        if (image) {
-            surface->ctx.currentBuffer = image->buffer;
-            image->attached = EGL_TRUE;
+        if (!image) {
+            return EGL_FALSE;
         }
+
+        surface->ctx.currentBuffer = image->buffer;
+        image->attached = EGL_TRUE;
 
         /*
          * Send our explicit sync acquire and release points. This needs to be done
