@@ -634,7 +634,6 @@ registry_handle_global_check_protocols(
 
     if ((strcmp(interface, "wl_drm") == 0) && (version >= 2)) {
         protocols->wlDrm = wl_registry_bind(registry, name, &wl_drm_interface, 2);
-        wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
     }
 }
 
@@ -831,6 +830,12 @@ static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
                 wl_display_roundtrip_queue(nativeDpy, queue);
                 zwp_linux_dmabuf_feedback_v1_destroy(default_feedback);
             }
+        }
+
+        /* If we didn't get a name through linux_dmabuf then fall back to wl_drm */
+        if (!protocols->drm_name && protocols->wlDrm) {
+            wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
+            wl_display_roundtrip_queue(nativeDpy, queue);
         }
 
         /* Check that one of our two protocols provided the device name */
