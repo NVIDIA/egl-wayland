@@ -86,3 +86,6 @@ egl_wayland = library('nvidia-egl-wayland',
     version : meson.project_version(),
     install : true,
 )
+
+install_data('10_nvidia_wayland.json',
+    install_dir: '@0@/egl/egl_external_platform.d'.format(get_option('datadir')))
