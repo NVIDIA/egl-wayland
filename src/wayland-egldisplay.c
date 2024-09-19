@@ -634,6 +634,7 @@ registry_handle_global_check_protocols(
 
     if ((strcmp(interface, "wl_drm") == 0) && (version >= 2)) {
         protocols->wlDrm = wl_registry_bind(registry, name, &wl_drm_interface, 2);
+        wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
     }
 }
 
@@ -817,11 +818,19 @@ static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
                                    protocols);
     if (ret == 0) {
         wl_display_roundtrip_queue(nativeDpy, queue);
+        /* use a second roundtrip to handle any wl_drm events triggered by binding the protocol */
+        wl_display_roundtrip_queue(nativeDpy, queue);
+
         if (!getDeviceFromDevIdInitialised) {
             getDeviceFromDevId = dlsym(RTLD_DEFAULT, "drmGetDeviceFromDevId");
             getDeviceFromDevIdInitialised = true;
         }
 
+        /*
+         * if dmabuf feedback is available then use that. This will potentially
+         * replace the drm_name provided by wl_drm, assuming the feedback provides
+         * a valid dev_t.
+         */
         if (protocols->wlDmaBuf && getDeviceFromDevId) {
             struct zwp_linux_dmabuf_feedback_v1 *default_feedback
                     = zwp_linux_dmabuf_v1_get_default_feedback(protocols->wlDmaBuf);
@@ -830,12 +839,6 @@ static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
                 wl_display_roundtrip_queue(nativeDpy, queue);
                 zwp_linux_dmabuf_feedback_v1_destroy(default_feedback);
             }
-        }
-
-        /* If we didn't get a name through linux_dmabuf then fall back to wl_drm */
-        if (!protocols->drm_name && protocols->wlDrm) {
-            wl_drm_add_listener(protocols->wlDrm, &drmListener, protocols);
-            wl_display_roundtrip_queue(nativeDpy, queue);
         }
 
         /* Check that one of our two protocols provided the device name */
