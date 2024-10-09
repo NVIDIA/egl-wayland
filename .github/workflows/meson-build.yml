@@ -1,0 +1,14 @@
+name: Meson GCC Build
+on: [push, pull_request]
+jobs:
+  Meson-Build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt update
+      - run: sudo apt install -y wayland-protocols libdrm-dev libegl-dev
+      - run: sudo apt install -y libwayland-dev libwayland-egl-backend-dev eglexternalplatform-dev
+      - run: sudo apt install -y meson ninja-build gcc
+      - run: meson build
+      - run: ninja -C build
+      - run: sudo ninja -C build install

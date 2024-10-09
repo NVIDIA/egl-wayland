@@ -1,0 +1,16 @@
+name: Arch Build
+on: [push, pull_request]
+jobs:
+  Meson-Build:
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: pacman --noconfirm -Syy
+      - run: pacman --noconfirm -S wayland-protocols libdrm libglvnd pkgconf
+      - run: pacman --noconfirm -S wayland eglexternalplatform
+      - run: pacman --noconfirm -S meson ninja gcc
+      - run: meson build
+      - run: ninja -C build
+      - run: ninja -C build install
