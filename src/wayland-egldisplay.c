@@ -729,10 +729,10 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
      * destroy the display connection itself */
     wlEglDestroyAllSurfaces(display);
 
-    wlEglDestroyFormatSet(&display->formatSet);
-    wlEglDestroyFeedback(&display->defaultFeedback);
-
     if (!globalTeardown || display->ownNativeDpy) {
+        wlEglDestroyFormatSet(&display->formatSet);
+        wlEglDestroyFeedback(&display->defaultFeedback);
+
         if (display->wlRegistry) {
             wl_registry_destroy(display->wlRegistry);
             display->wlRegistry = NULL;
