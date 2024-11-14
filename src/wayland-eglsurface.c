@@ -2652,7 +2652,10 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     WlEglDisplay         *display = wlEglAcquireDisplay(dpy);
     WlEglPlatformData    *data    = NULL;
     WlEglSurface         *surface = NULL;
+    WlEglSurface         *existingSurf = NULL;
     struct wl_egl_window *window  = (struct wl_egl_window *)nativeWin;
+    struct wl_surface    *wsurf   = NULL;
+    long int              wver    = 0;
     EGLBoolean            res     = EGL_FALSE;
     EGLint                err     = EGL_SUCCESS;
     EGLint                surfType;
@@ -2681,6 +2684,23 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     if (window->driver_private != NULL) {
         err = EGL_BAD_ALLOC;
         goto fail;
+    }
+
+    getWlEglWindowVersionAndSurface(window, &wver, &wsurf);
+    if (wsurf == NULL) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
+
+    // Make sure that we don't have any existing EGLSurfaces for this
+    // wl_surface. The driver_private check above isn't sufficient for this: If
+    // the app calls wl_egl_window_create more than once on the same
+    // wl_surface, then it would get multiple wl_egl_window structs.
+    wl_list_for_each(existingSurf, &display->wlEglSurfaceList, link) {
+        if (existingSurf->wlSurface == wsurf) {
+            err = EGL_BAD_ALLOC;
+            goto fail;
+        }
     }
 
     res = data->egl.getConfigAttrib(dpy, config, EGL_SURFACE_TYPE, &surfType);
@@ -2757,9 +2777,8 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     // Create per surface wayland queue
     surface->wlEventQueue = wl_display_create_queue(display->nativeDpy);
 
-    getWlEglWindowVersionAndSurface(window,
-                                    &surface->wlEglWinVer,
-                                    &surface->wlSurface);
+    surface->wlEglWinVer = wver;
+    surface->wlSurface = wsurf;
 
     err = assignWlEglSurfaceAttribs(surface, attribs);
     if (err != EGL_SUCCESS) {
