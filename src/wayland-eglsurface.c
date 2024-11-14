@@ -2843,15 +2843,14 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
     return surface;
 
 fail:
-    if (surface->drmSyncobjHandle) {
-        drmSyncobjDestroy(display->drmFd, surface->drmSyncobjHandle);
-    }
-
     if (drmSyncobjFd > 0) {
         close(drmSyncobjFd);
     }
 
     if (surface) {
+        if (surface->drmSyncobjHandle) {
+            drmSyncobjDestroy(display->drmFd, surface->drmSyncobjHandle);
+        }
         wlEglDestroySurface(display, surface);
     }
 
