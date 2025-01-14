@@ -500,7 +500,7 @@ buffer_release_thread(void *args)
         }
 
         if (pfds[1].revents & POLLIN) {
-            if (read(pfds[1].fd, &cmd, sizeof(cmd) != sizeof(cmd))) {
+            if (read(pfds[1].fd, &cmd, sizeof(cmd)) != sizeof(cmd)) {
                 /* Reading an event from the app side failed. Bail. */
                 wl_display_cancel_read(wlDpy);
                 return NULL;
