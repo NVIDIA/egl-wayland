@@ -1646,6 +1646,32 @@ EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
     return ret;
 }
 
+const char* wlEglQueryStringHook(EGLDisplay dpy, EGLint name)
+{
+    WlEglDisplay *display = wlEglAcquireDisplay(dpy);
+    const char *str = NULL;
+
+    if (!display) {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&display->mutex);
+
+    if (name == EGL_EXTENSIONS)
+    {
+        str = display->extensionString;
+    }
+    if (str == NULL)
+    {
+        str = display->data->egl.queryString(display->devDpy->eglDisplay, name);
+    }
+
+    pthread_mutex_unlock(&display->mutex);
+    wlEglReleaseDisplay(display);
+
+    return str;
+}
+
 EGLBoolean wlEglDestroyAllDisplays(WlEglPlatformData *data)
 {
     WlEglDisplay *display, *next;
@@ -1724,13 +1750,13 @@ const char* wlEglQueryStringExport(void *data,
                                    exts)) {
                 if (wlEglFindExtension("EGL_KHR_stream_cross_process_fd",
                                        exts)) {
-                    res = "EGL_EXT_present_opaque EGL_WL_bind_wayland_display "
+                    res = "EGL_WL_bind_wayland_display "
                         "EGL_WL_wayland_eglstream";
                 } else if (wlEglFindExtension("EGL_NV_stream_consumer_eglimage",
                                               exts) &&
                            wlEglFindExtension("EGL_MESA_image_dma_buf_export",
                                               exts)) {
-                    res = "EGL_EXT_present_opaque EGL_WL_bind_wayland_display";
+                    res = "EGL_WL_bind_wayland_display";
                 }
             }
         }

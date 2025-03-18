@@ -223,6 +223,7 @@ EGLBoolean wlEglGetConfigAttribHook(EGLDisplay dpy,
 EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
                                        EGLint name,
                                        EGLAttrib *value);
+const char* wlEglQueryStringHook(EGLDisplay dpy, EGLint name);
 
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy);
