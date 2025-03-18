@@ -764,6 +764,11 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
         }
     }
 
+    if (display->extensionString != NULL) {
+        free(display->extensionString);
+        display->extensionString = NULL;
+    }
+
     return EGL_TRUE;
 }
 
@@ -1286,6 +1291,29 @@ destroy:
     drmSyncobjDestroy(display->drmFd, tmpSyncobj);
 }
 
+static char *InitExtensionString(const char *internal_ext)
+{
+    static const char PRESENT_OPAQUE_NAME[] = "EGL_EXT_present_opaque";
+    size_t len;
+    char *str;
+
+    if (internal_ext == NULL || internal_ext[0] == '\x00') {
+        return strdup(PRESENT_OPAQUE_NAME);
+    }
+    if (wlEglFindExtension(PRESENT_OPAQUE_NAME, internal_ext)) {
+        return strdup(internal_ext);
+    }
+
+    len = strlen(internal_ext);
+    str = malloc(len + 1 + sizeof(PRESENT_OPAQUE_NAME));
+    if (str != NULL) {
+        memcpy(str, internal_ext, len);
+        str[len] = ' ';
+        memcpy(str + len + 1, PRESENT_OPAQUE_NAME, sizeof(PRESENT_OPAQUE_NAME));
+    }
+    return str;
+}
+
 EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
 {
     WlEglDisplay      *display = wlEglAcquireDisplay(dpy);
@@ -1335,6 +1363,12 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     // Set the initCount to 1. If something goes wrong, then terminateDisplay
     // will clean up and set it back to zero.
     display->initCount = 1;
+
+    display->extensionString = InitExtensionString(dev_exts);
+    if (display->extensionString == NULL) {
+        err = EGL_BAD_ALLOC;
+        goto fail;
+    }
 
     display->wlEventQueue =  wl_display_create_queue(display->nativeDpy);;
     if (display->wlEventQueue == NULL) {

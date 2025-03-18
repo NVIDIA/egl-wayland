@@ -182,6 +182,8 @@ typedef struct WlEglDisplayRec {
     WlEglDmaBufFeedback defaultFeedback;
 
     EGLBoolean primeRenderOffload;
+
+    char *extensionString;
 } WlEglDisplay;
 
 typedef struct WlEventQueueRec {
