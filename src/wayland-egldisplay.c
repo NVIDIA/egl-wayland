@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2022, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2014-2025, NVIDIA CORPORATION. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -914,6 +914,7 @@ static EGLBoolean checkNvidiaDrmDevice(WlServerProtocols *protocols)
         version = drmGetVersion(fd);
         if (version != NULL && version->name != NULL) {
             if (strcmp(version->name, "nvidia-drm") == 0
+                    || strcmp(version->name, "tegradisp-drm") == 0
                     || strcmp(version->name, "tegra-udrm") == 0
                     || strcmp(version->name, "tegra") == 0) {
                 result = EGL_TRUE;
