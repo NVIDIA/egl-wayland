@@ -182,6 +182,8 @@ typedef struct WlEglDisplayRec {
     WlEglDmaBufFeedback defaultFeedback;
 
     EGLBoolean primeRenderOffload;
+
+    char *extensionString;
 } WlEglDisplay;
 
 typedef struct WlEventQueueRec {
@@ -221,6 +223,7 @@ EGLBoolean wlEglGetConfigAttribHook(EGLDisplay dpy,
 EGLBoolean wlEglQueryDisplayAttribHook(EGLDisplay dpy,
                                        EGLint name,
                                        EGLAttrib *value);
+const char* wlEglQueryStringHook(EGLDisplay dpy, EGLint name);
 
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy);
