@@ -48,15 +48,14 @@ typedef struct WlServerProtocolsRec {
     struct zwp_linux_dmabuf_v1 *wlDmaBuf;
     dev_t devId;
 
+    WlEglPlatformData *pData;
+
     struct wl_drm *wlDrm;
     char *drm_name;
 } WlServerProtocols;
 
 /* TODO: Make global display lists hang off platform data */
 static struct wl_list wlEglDisplayList = WL_LIST_INITIALIZER(&wlEglDisplayList);
-
-static bool getDeviceFromDevIdInitialised = false;
-static int (*getDeviceFromDevId)(dev_t dev_id, uint32_t flags, drmDevice **device) = NULL;
 
 EGLBoolean wlEglIsWaylandDisplay(void *nativeDpy)
 {
@@ -573,8 +572,8 @@ dmabuf_feedback_check_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmab
 
     (void) dmabuf_feedback;
 
-    assert(getDeviceFromDevId);
-    if (getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
+    assert(protocols->pData->getDeviceFromDevId);
+    if (protocols->pData->getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
         if (drm_device->available_nodes & (1 << DRM_NODE_RENDER)) {
             free(protocols->drm_name);
             protocols->drm_name = strdup(drm_device->nodes[DRM_NODE_RENDER]);
@@ -826,17 +825,12 @@ static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
         /* use a second roundtrip to handle any wl_drm events triggered by binding the protocol */
         wl_display_roundtrip_queue(nativeDpy, queue);
 
-        if (!getDeviceFromDevIdInitialised) {
-            getDeviceFromDevId = dlsym(RTLD_DEFAULT, "drmGetDeviceFromDevId");
-            getDeviceFromDevIdInitialised = true;
-        }
-
         /*
          * if dmabuf feedback is available then use that. This will potentially
          * replace the drm_name provided by wl_drm, assuming the feedback provides
          * a valid dev_t.
          */
-        if (protocols->wlDmaBuf && getDeviceFromDevId) {
+        if (protocols->wlDmaBuf && protocols->pData->getDeviceFromDevId) {
             struct zwp_linux_dmabuf_feedback_v1 *default_feedback
                     = zwp_linux_dmabuf_v1_get_default_feedback(protocols->wlDmaBuf);
             if (default_feedback) {
@@ -942,7 +936,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
 {
     WlEglPlatformData     *pData           = (WlEglPlatformData *)data;
     WlEglDisplay          *display         = NULL;
-    WlServerProtocols      protocols       = {};
+    WlServerProtocols      protocols       = {.pData = pData};
     EGLint                 numDevices      = 0;
     int                    i               = 0;
     EGLDeviceEXT          *eglDeviceList   = NULL;

@@ -28,6 +28,7 @@
 #include "wayland-external-exports.h"
 #include "wayland-egl-ext.h"
 #include <pthread.h>
+#include <xf86drm.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -137,6 +138,10 @@ typedef struct WlEglPlatformDataRec {
 
     /* pthread key for TLS */
     pthread_key_t tlsKey;
+
+    /* libdrm Handle */
+    void *libdrmDlHandle;
+    int (*getDeviceFromDevId)(dev_t dev_id, uint32_t flags, drmDevice **device);
 } WlEglPlatformData;
 
 
