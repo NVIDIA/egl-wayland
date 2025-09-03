@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <assert.h>
+#include <dlfcn.h>
 
 WlEglPlatformData*
 wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
@@ -151,6 +152,18 @@ wlEglCreatePlatformData(int apiMajor, int apiMinor, const EGLExtDriver *driver)
     res->callbacks.setError           = driver->setError;
     res->callbacks.streamSwapInterval = driver->streamSwapInterval;
 
+    /*
+     * try to find drmGetDeviceFromDevId. First try the default search method,
+     * but certain application tricks may interfere with this. Most notably
+     * steam's overlay. If we can't find it through default methods fall back
+     * to directly opening libdrm.
+     */
+    res->getDeviceFromDevId = dlsym(RTLD_DEFAULT, "drmGetDeviceFromDevId");
+    if (!res->getDeviceFromDevId) {
+        res->libdrmDlHandle = dlopen("libdrm.so.2", RTLD_LAZY);
+        res->getDeviceFromDevId = dlsym(res->libdrmDlHandle, "drmGetDeviceFromDevId");
+    }
+
     return res;
 
 fail:
@@ -160,6 +173,9 @@ fail:
 
 void wlEglDestroyPlatformData(WlEglPlatformData *data)
 {
+    if (data->libdrmDlHandle) {
+        dlclose(data->libdrmDlHandle);
+    }
     free(data);
 }
 
