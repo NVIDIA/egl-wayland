@@ -68,6 +68,7 @@ typedef struct WlEglDmaBufFormatSetRec {
 typedef struct WlEglDmaBufTrancheRec {
     dev_t drmDev;
     int supportsScanout;
+    int supportsSampling;
     WlEglDmaBufFormatSet formatSet;
 } WlEglDmaBufTranche;
 
@@ -179,8 +180,6 @@ typedef struct WlEglDisplayRec {
     unsigned int dmaBufProtocolVersion;
 
     WlEglDmaBufFeedback defaultFeedback;
-
-    EGLBoolean primeRenderOffload;
 
     char *extensionString;
 } WlEglDisplay;

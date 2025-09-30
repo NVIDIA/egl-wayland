@@ -54,7 +54,7 @@ AM_CONDITIONAL([WAYLAND_SCANNER_HAS_PRIVATE_CODE],
                [test x$WAYLAND_SCANNER = x`$PKG_CONFIG --variable=wayland_scanner "wayland-scanner >= 1.14.91"`])
 
 # Check for protocols.
-PKG_CHECK_MODULES(WAYLAND_PROTOCOLS, [wayland-protocols >= 1.8])
+PKG_CHECK_MODULES(WAYLAND_PROTOCOLS, [wayland-protocols >= 1.49])
 AC_SUBST(WAYLAND_PROTOCOLS_DATADIR, `$PKG_CONFIG --variable=pkgdatadir wayland-protocols`)
 
 # Initialize libtool
