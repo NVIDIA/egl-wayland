@@ -162,6 +162,12 @@ struct WlEglSurfaceRec {
 
     WlEglDmaBufFeedback feedback;
 
+    /* Per-surface PRIME state derived from the surface feedback tranches.
+     * When per-surface feedback is available, these override the display-level
+     * primeRenderOffload / primeSamplingDevice. */
+    EGLBoolean primeRenderOffload;
+    dev_t primeSamplingDevice;
+
     /* per-surface Explicit Sync objects */
     struct wp_linux_drm_syncobj_surface_v1 *wlSyncobjSurf;
     struct wp_linux_drm_syncobj_timeline_v1 *wlAcquireTimeline;

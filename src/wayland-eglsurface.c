@@ -23,7 +23,7 @@
 #include "wayland-eglsurface-internal.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
-#include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
@@ -1276,6 +1276,8 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
     WlEglStreamImage   *image = NULL;
     struct zwp_linux_dmabuf_v1 *wrapper = NULL;
     struct zwp_linux_buffer_params_v1 *params;
+    struct wl_array     wlDev;
+    dev_t               *wlDevData;
     EGLuint64KHR        modifier;
     int                 format;
     int                 planes;
@@ -1375,6 +1377,27 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
                 format = DRM_FORMAT_XRGB8888;
             }
         }
+
+        /*
+         * If the compositor has support, tell it which device this buffer
+         * resides on so it knows where to import it.
+         *
+         * In non-PRIME mode the compositor samples from the NVIDIA GPU directly,
+         * so advertise the NVIDIA render node.  In PRIME mode the compositor
+         * cannot sample from NVIDIA and will import the buffer onto its own
+         * (non-NVIDIA) device, so advertise that device instead.
+         */
+        wl_array_init(&wlDev);
+        if (display->dmaBufProtocolVersion >= 6
+            && (wlDevData = (dev_t *)wl_array_add(&wlDev, sizeof(dev_t)))) {
+            if (surface->primeRenderOffload && surface->primeSamplingDevice != 0) {
+                *wlDevData = surface->primeSamplingDevice;
+            } else {
+                *wlDevData = display->devDpy->renderNode;
+            }
+            zwp_linux_buffer_params_v1_set_sampling_device(params, &wlDev);
+        }
+        wl_array_release(&wlDev);
 
         image->buffer = zwp_linux_buffer_params_v1_create_immed(params,
                                                                 surface->width,
@@ -1744,6 +1767,7 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
     EGLint err = EGL_SUCCESS;
     EGLint numModifiers = 0;
     EGLuint64KHR *modifiers = NULL;
+    EGLuint64KHR linearModifier;
     uint32_t format;
     WlEglDmaBufFormatSet *formatSet = NULL;
     WlEglDmaBufFeedback *feedback = NULL;
@@ -1784,15 +1808,6 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
                 /* try again and see if there is a matching tranche for the render node */
                 formatSet = WlEglGetFormatSetForDev(feedback, display->devDpy->renderNode, format);
             }
-
-            /*
-             * If we could not find any modifiers for this device, and if we are
-             * in a prime setup, use the main device's format set. This will allow
-             * us to check if the main device supports the linear modifier.
-             */
-            if (!formatSet && display->primeRenderOffload) {
-                formatSet = WlEglGetFormatSetForDev(feedback, feedback->mainDev, format);
-            }
         }
 
         /* grab the modifier array */
@@ -1804,6 +1819,19 @@ static EGLint create_surface_stream_local(WlEglSurface *surface)
                     break;
                 }
             }
+        }
+
+        /*
+         * PRIME render offload copies buffers between the rendering and
+         * sampling devices, which only reliably works with linearly laid
+         * out buffers. Force the linear modifier here instead of trusting
+         * the (possibly stale or overly permissive) advertised modifier
+         * list.
+         */
+        if (surface->primeRenderOffload) {
+            linearModifier = DRM_FORMAT_MOD_LINEAR;
+            modifiers = &linearModifier;
+            numModifiers = 1;
         }
     }
 
@@ -2262,6 +2290,60 @@ WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
     return surface;
 }
 
+/*
+ * Re-evaluate the PRIME render offload state from the per-surface feedback
+ * tranches.  Called when the compositor sends new feedback for this surface
+ * (e.g. surface moved to an output backed by a different GPU).
+ *
+ * Only meaningful for linux-dmabuf v6+; earlier versions use main_device.
+ */
+static void
+wlEglUpdateSurfacePrimeState(WlEglDisplay *display, WlEglSurface *surface)
+{
+    int i;
+    dev_t nvidia_primary_dev;
+    dev_t nvidia_render_dev;
+    dev_t first_sampling_dev = 0;
+    bool nvidia_can_sample = false;
+    WlEglDmaBufFeedback *feedback = &surface->feedback;
+
+    if (display->dmaBufProtocolVersion < 6)
+        return;
+
+    /*
+     * The compositor is free to advertise either the primary or the render
+     * node in its tranche target device, and it may even use different nodes
+     * across feedback rounds. Match against both so we don't mistake our own
+     * device for a foreign one and needlessly enable PRIME offload.
+     */
+    nvidia_primary_dev = display->devDpy->dev;
+    nvidia_render_dev = display->devDpy->renderNode;
+
+    for (i = 0; i < feedback->numTranches; i++) {
+        WlEglDmaBufTranche *tranche = &feedback->tranches[i];
+
+        if (!tranche->supportsSampling)
+            continue;
+
+        if (first_sampling_dev == 0)
+            first_sampling_dev = tranche->drmDev;
+
+        if (tranche->drmDev == nvidia_primary_dev ||
+            tranche->drmDev == nvidia_render_dev) {
+            nvidia_can_sample = true;
+            break;
+        }
+    }
+
+    if (nvidia_can_sample) {
+        surface->primeRenderOffload = EGL_FALSE;
+        surface->primeSamplingDevice = 0;
+    } else if (first_sampling_dev != 0) {
+        surface->primeRenderOffload = EGL_TRUE;
+        surface->primeSamplingDevice = first_sampling_dev;
+    }
+}
+
 void
 wlEglReallocSurface(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurface *surface)
 {
@@ -2279,8 +2361,15 @@ wlEglReallocSurface(WlEglDisplay *display, WlEglPlatformData *pData, WlEglSurfac
     surface->ctx.eglStream = EGL_NO_STREAM_KHR;
     surface->ctx.damageThreadSync = EGL_NO_SYNC_KHR;
     surface->ctx.damageThreadId = (pthread_t)0;
+    /*
+     * Re-evaluate the PRIME render offload state from per-surface feedback
+     * before recreating the surface context.  Per-surface feedback tells us
+     * which GPU the compositor will sample from for this specific surface.
+     */
+    if (surface->feedback.unprocessedFeedback) {
+        wlEglUpdateSurfacePrimeState(display, surface);
+    }
     surface->feedback.unprocessedFeedback = false;
-
     display->defaultFeedback.unprocessedFeedback = false;
 
     err = create_surface_context(surface);
@@ -2826,7 +2915,8 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
             goto fail;
         }
 
-        /* We haven't allocated our surface yet, so we can clear this flag. */
+        /* Set initial per-surface PRIME state from the surface feedback. */
+        wlEglUpdateSurfacePrimeState(display, surface);
         surface->feedback.unprocessedFeedback = false;
     }
 

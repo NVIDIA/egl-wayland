@@ -23,7 +23,7 @@
 #include "wayland-egldisplay.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
-#include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "linux-dmabuf-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
 #include "wayland-eglsurface-internal.h"
@@ -41,12 +41,30 @@
 #include <sys/mman.h>
 #include <xf86drm.h>
 #include <dlfcn.h>
+#include <drm_fourcc.h>
 
 typedef struct WlServerProtocolsRec {
     EGLBoolean hasEglStream;
     EGLBoolean hasDmaBuf;
     struct zwp_linux_dmabuf_v1 *wlDmaBuf;
+    int dmabufVersion;
     dev_t devId;
+
+    struct {
+        dev_t targetDev;
+        bool sampled;
+        bool hasLinear;      /* tranche advertises the LINEAR modifier */
+    } currentTranche;
+    dev_t nvidia_sample_dev;  /* first sampling tranche targeting NVIDIA GPU */
+    dev_t first_sample_dev;   /* first sampling tranche, any GPU */
+    bool first_sample_linear; /* first_sample_dev advertises LINEAR */
+    dev_t primeSamplingDev;   /* non-NVIDIA sampling device; set when PRIME path is needed */
+    EGLBoolean usePrimeRenderOffload; /* honor __NV_PRIME_RENDER_OFFLOAD */
+
+    /* Format table mmap'd from the dmabuf feedback, used to look up the
+     * modifiers advertised by each tranche. */
+    WlEglDmaBufFormatTableEntry *formatTable;
+    int formatTableLen;
 
     WlEglPlatformData *pData;
 
@@ -321,6 +339,8 @@ dmabuf_feedback_tranche_flags(void *data,
 
     if (flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SCANOUT)
         feedback->tmpTranche.supportsScanout = true;
+    if (flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING)
+        feedback->tmpTranche.supportsSampling = true;
 }
 
 static void
@@ -464,7 +484,7 @@ registry_handle_global(void *data,
             display->wlDmaBuf = wl_registry_bind(registry,
                                                  name,
                                                  &zwp_linux_dmabuf_v1_interface,
-                                                 version > 3 ? 4 : 3);
+                                                 version > 6 ? 6 : version);
         }
         display->dmaBufProtocolVersion = version;
     } else if (strcmp(interface, "wp_presentation") == 0) {
@@ -544,14 +564,65 @@ dmabuf_feedback_check_main_device(void *data,
     memcpy(&protocols->devId, dev->data, sizeof(dev_t));
 }
 
+static bool isNvidiaDriverName(const char *name)
+{
+    return name != NULL &&
+        (strcmp(name, "nvidia-drm") == 0
+         || strcmp(name, "tegradisp-drm") == 0
+         || strcmp(name, "tegra-udrm") == 0
+         || strcmp(name, "tegra") == 0);
+}
+
+/*
+ * Determine whether a drmDevice belongs to NVIDIA. For PCI devices we can
+ * check the vendor ID directly. Otherwise (e.g. Tegra, which isn't a PCI
+ * device), open one of the device's nodes and match the kernel driver name
+ * via drmGetVersion.
+ */
+static bool drmDeviceIsNvidia(drmDevice *dev)
+{
+    drmVersion *version = NULL;
+    int fd = -1;
+    bool result = false;
+
+    if (dev->bustype == DRM_BUS_PCI) {
+        return dev->deviceinfo.pci->vendor_id == 0x10de;
+    }
+
+    if ((dev->available_nodes & (1 << DRM_NODE_RENDER)) &&
+        dev->nodes[DRM_NODE_RENDER] != NULL) {
+        fd = open(dev->nodes[DRM_NODE_RENDER], O_RDWR);
+    }
+    if (fd < 0 &&
+        (dev->available_nodes & (1 << DRM_NODE_PRIMARY)) &&
+        dev->nodes[DRM_NODE_PRIMARY] != NULL) {
+        fd = open(dev->nodes[DRM_NODE_PRIMARY], O_RDWR);
+    }
+    if (fd < 0) {
+        return false;
+    }
+
+    version = drmGetVersion(fd);
+    if (version != NULL) {
+        result = isNvidiaDriverName(version->name);
+        drmFreeVersion(version);
+    }
+
+    close(fd);
+    return result;
+}
+
 static void
 dmabuf_feedback_check_tranche_target_device(void *data,
                                       struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
                                       struct wl_array *dev)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
     (void) dev;
+
+    assert(dev->size == sizeof(dev_t));
+    memcpy(&protocols->currentTranche.targetDev, dev->data, sizeof(dev_t));
 }
 
 static void
@@ -559,9 +630,11 @@ dmabuf_feedback_check_tranche_flags(void *data,
                               struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
                               uint32_t flags)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
-    (void) flags;
+
+    protocols->currentTranche.sampled =
+        (flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING) != 0;
 }
 
 static void
@@ -569,17 +642,67 @@ dmabuf_feedback_check_tranche_formats(void *data,
                                 struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
                                 struct wl_array *indices)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
+    uint16_t *index;
     (void) dmabuf_feedback;
-    (void) indices;
+
+    /* Without the format table we can't resolve indices to modifiers. */
+    if (protocols->formatTable == NULL) {
+        return;
+    }
+
+    /* Record whether this tranche can import LINEAR buffers. */
+    wl_array_for_each(index, indices) {
+        if (*index >= protocols->formatTableLen) {
+            /* Out of range index, compositor bug. Skip it. */
+            continue;
+        }
+        if (protocols->formatTable[*index].format == DRM_FORMAT_XRGB8888
+            && protocols->formatTable[*index].modifier == DRM_FORMAT_MOD_LINEAR) {
+            protocols->currentTranche.hasLinear = true;
+            break;
+        }
+    }
 }
 
 static void
 dmabuf_feedback_check_tranche_done(void *data,
                              struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
+    drmDevice *drm_device;
     (void) dmabuf_feedback;
+
+    if (protocols->currentTranche.sampled) {
+        dev_t targetDev = protocols->currentTranche.targetDev;
+
+        /* Track the first sampling tranche regardless of GPU vendor */
+        if (protocols->first_sample_dev == 0) {
+            protocols->first_sample_dev = targetDev;
+        }
+
+        /*
+         * Accumulate LINEAR support for the first sampling device across all
+         * of its sampling tranches. The PRIME copy path needs the compositor
+         * to be able to import the linear buffers we produce.
+         */
+        if (targetDev == protocols->first_sample_dev &&
+            protocols->currentTranche.hasLinear) {
+            protocols->first_sample_linear = true;
+        }
+
+        /* Check if this sampling tranche targets an NVIDIA GPU */
+        if (protocols->nvidia_sample_dev == 0 &&
+            protocols->pData->getDeviceFromDevId(targetDev, 0, &drm_device) == 0) {
+            if (drmDeviceIsNvidia(drm_device)) {
+                protocols->nvidia_sample_dev = targetDev;
+            }
+            drmFreeDevice(&drm_device);
+        }
+    }
+
+    /* Clear per-tranche state so the next tranche starts fresh. */
+    protocols->currentTranche.hasLinear = false;
 }
 
 static void
@@ -589,6 +712,44 @@ dmabuf_feedback_check_done(void *data, struct zwp_linux_dmabuf_feedback_v1 *dmab
     drmDevice *drm_device;
 
     (void) dmabuf_feedback;
+
+    /*
+     * On dmabuf v6, the main_device event is deprecated. Determine devId from
+     * the sampling tranches advertised in this feedback cycle, honoring
+     * __NV_PRIME_RENDER_OFFLOAD:
+     *
+     * If __NV_PRIME_RENDER_OFFLOAD is not set, then we should only ever look
+     * at the first sampling device, because the first samling device is what
+     * should handle rendering by default. If that's not an NV device, then
+     * wlEglGetPlatformDisplayExport should return NULL and let Mesa handle the
+     * display.
+     *
+     * If __NV_PRIME_RENDER_OFFLOAD is set, then we can look for an NVIDIA
+     * sampling device if one is available to decide which EGLDeviceEXT to use
+     * when we create the internal EGLDisplay.
+     *
+     * Clear per-cycle state so the next feedback cycle starts fresh.
+     */
+    if (protocols->dmabufVersion >= 6) {
+        if (protocols->usePrimeRenderOffload && protocols->nvidia_sample_dev != 0) {
+            protocols->devId = protocols->nvidia_sample_dev;
+        } else if (protocols->first_sample_dev != 0) {
+            protocols->devId = protocols->first_sample_dev;
+            /*
+             * The compositor samples from a non-NVIDIA device, so it will have
+             * to import our buffers via a PRIME copy. That only works if the
+             * sampling device can import the linear-modifier buffers we
+             * produce, so only commit to the PRIME path when it advertises
+             * LINEAR.
+             */
+            if (protocols->usePrimeRenderOffload && protocols->first_sample_linear) {
+                protocols->primeSamplingDev = protocols->first_sample_dev;
+            }
+        }
+        protocols->nvidia_sample_dev = 0;
+        protocols->first_sample_dev = 0;
+        protocols->first_sample_linear = false;
+    }
 
     assert(protocols->pData->getDeviceFromDevId);
     if (protocols->pData->getDeviceFromDevId(protocols->devId, 0, &drm_device) == 0) {
@@ -606,12 +767,26 @@ dmabuf_feedback_check_format_table(void *data,
                              struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
                              int32_t fd, uint32_t size)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
-    (void) size;
 
-    /* This probe only cares about main_device; don't leak the table fd. */
+    if (size % sizeof(WlEglDmaBufFormatTableEntry) != 0) {
+        close(fd);
+        return;
+    }
+
+    protocols->formatTable = (WlEglDmaBufFormatTableEntry *)
+        mmap(NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
     close(fd);
+
+    if (protocols->formatTable == MAP_FAILED) {
+        /* Out of resources or a compositor bug. Fall back to no table. */
+        protocols->formatTable = NULL;
+        protocols->formatTableLen = 0;
+        return;
+    }
+
+    protocols->formatTableLen = size / sizeof(WlEglDmaBufFormatTableEntry);
 }
 
 static const struct zwp_linux_dmabuf_feedback_v1_listener dmabuf_feedback_check_listener = {
@@ -644,10 +819,13 @@ registry_handle_global_check_protocols(
 
     if ((strcmp(interface, "zwp_linux_dmabuf_v1") == 0) &&
         (version >= 3)) {
+        int selected_version = version > 6 ? 6 : version;
         protocols->hasDmaBuf = EGL_TRUE;
+        protocols->dmabufVersion = selected_version;
         /* Version 4 introduced default_feedback which allows us to determine the device used by the compositor */
-        if (version >= 4) {
-            protocols->wlDmaBuf = wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 4);
+        if (selected_version >= 4) {
+            protocols->wlDmaBuf = wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface,
+                                                   selected_version);
         }
     }
 
@@ -854,6 +1032,13 @@ static bool getServerProtocolsInfo(struct wl_display *nativeDpy,
                 wl_display_roundtrip_queue(nativeDpy, queue);
                 zwp_linux_dmabuf_feedback_v1_destroy(default_feedback);
             }
+
+            if (protocols->formatTable) {
+                munmap(protocols->formatTable,
+                       protocols->formatTableLen * sizeof(WlEglDmaBufFormatTableEntry));
+                protocols->formatTable = NULL;
+                protocols->formatTableLen = 0;
+            }
         }
 
         /* Check that one of our two protocols provided the device name */
@@ -922,13 +1107,8 @@ static EGLBoolean checkNvidiaDrmDevice(WlServerProtocols *protocols)
 
     if (!result) {
         version = drmGetVersion(fd);
-        if (version != NULL && version->name != NULL) {
-            if (strcmp(version->name, "nvidia-drm") == 0
-                    || strcmp(version->name, "tegradisp-drm") == 0
-                    || strcmp(version->name, "tegra-udrm") == 0
-                    || strcmp(version->name, "tegra") == 0) {
-                result = EGL_TRUE;
-            }
+        if (version != NULL && isNvidiaDriverName(version->name)) {
+            result = EGL_TRUE;
         }
     }
 
@@ -1041,6 +1221,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     if (primeRenderOffloadStr && !strcmp(primeRenderOffloadStr, "1")) {
         usePrimeRenderOffload = EGL_TRUE;
     }
+    protocols.usePrimeRenderOffload = usePrimeRenderOffload;
 
     /*
      * This is where we check the supported protocols on the compositor,
@@ -1174,7 +1355,8 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         }
     }
 
-    if (eglDevice == EGL_NO_DEVICE_EXT && usePrimeRenderOffload) {
+    if (eglDevice == EGL_NO_DEVICE_EXT &&
+        (usePrimeRenderOffload || protocols.primeSamplingDev != 0)) {
         /*
          * If __NV_PRIME_RENDER_OFFLOAD is set, then use an NVIDIA device. It
          * doesn't matter which one.
@@ -1185,14 +1367,6 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     if (eglDevice == EGL_NO_DEVICE_EXT) {
         // If we couldn't find a device to render on, then fail.
         goto fail;
-    }
-
-    if (eglDevice != serverDevice) {
-        /*
-         * If we're rendering with a different device than the compositor is
-         * using, then we'll need to use the PRIME offloading path.
-         */
-        display->primeRenderOffload = EGL_TRUE;
     }
 
     display->devDpy = wlGetInternalDisplay(pData, eglDevice);

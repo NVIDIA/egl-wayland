@@ -76,10 +76,10 @@ libnvidia_egl_wayland_la_built_server_headers =               \
     wayland-drm/wayland-drm-server-protocol.h
 
 libnvidia_egl_wayland_la_dmabuf_built_client_headers =        \
-    linux-dmabuf-unstable-v1-client-protocol.h
+    linux-dmabuf-v1-client-protocol.h
 
 libnvidia_egl_wayland_la_dmabuf_built_private_protocols =     \
-    linux-dmabuf-unstable-v1-protocol.c
+    linux-dmabuf-v1-protocol.c
 
 libnvidia_egl_wayland_la_drm_syncobj_built_client_headers =       \
     linux-drm-syncobj-v1-client-protocol.h
@@ -132,10 +132,10 @@ else
     WAYLAND_PRIVATE_CODEGEN = code
 endif
 
-$(libnvidia_egl_wayland_la_dmabuf_built_private_protocols):%-protocol.c : $(WAYLAND_PROTOCOLS_DATADIR)/unstable/linux-dmabuf/%.xml
+$(libnvidia_egl_wayland_la_dmabuf_built_private_protocols):%-protocol.c : $(WAYLAND_PROTOCOLS_DATADIR)/stable/linux-dmabuf/%.xml
 	$(AM_V_GEN)$(WAYLAND_SCANNER) $(WAYLAND_PRIVATE_CODEGEN) < $< > $@
 
-$(libnvidia_egl_wayland_la_dmabuf_built_client_headers):%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/unstable/linux-dmabuf/%.xml
+$(libnvidia_egl_wayland_la_dmabuf_built_client_headers):%-client-protocol.h : $(WAYLAND_PROTOCOLS_DATADIR)/stable/linux-dmabuf/%.xml
 	$(AM_V_GEN)$(WAYLAND_SCANNER) client-header < $< > $@
 
 $(libnvidia_egl_wayland_la_drm_syncobj_built_private_protocols):%-protocol.c : $(WAYLAND_PROTOCOLS_DATADIR)/staging/linux-drm-syncobj/%.xml
