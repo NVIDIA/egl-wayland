@@ -23,7 +23,7 @@
 #include "wayland-eglsurface-internal.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
-#include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
@@ -1279,6 +1279,8 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
     WlEglStreamImage   *image = NULL;
     struct zwp_linux_dmabuf_v1 *wrapper = NULL;
     struct zwp_linux_buffer_params_v1 *params;
+    struct wl_array     wlDev;
+    dev_t               *wlDevData;
     EGLuint64KHR        modifier;
     int                 format;
     int                 planes;
@@ -1378,6 +1380,19 @@ acquire_surface_image(WlEglDisplay *display, WlEglSurface *surface)
                 format = DRM_FORMAT_XRGB8888;
             }
         }
+
+        /*
+         * If the compositor has support then tell it which device this buffer
+         * resides on. This allows the compositor to know where it should import
+         * the buffer instead of guessing which device it belongs to.
+         */
+        wl_array_init(&wlDev);
+        if (display->dmaBufProtocolVersion >= 6
+            && (wlDevData = (dev_t *)wl_array_add(&wlDev, sizeof(dev_t)))) {
+            *wlDevData = display->devDpy->renderNode;
+            zwp_linux_buffer_params_v1_set_sampling_device(params, &wlDev);
+        }
+        wl_array_release(&wlDev);
 
         image->buffer = zwp_linux_buffer_params_v1_create_immed(params,
                                                                 surface->width,

@@ -18,7 +18,7 @@ endif
 wl_protos = dependency('wayland-protocols', version: '>= 1.8')
 libdrm = dependency('libdrm')
 wl_protos_dir = wl_protos.get_pkgconfig_variable('pkgdatadir')
-wl_dmabuf_xml = join_paths(wl_protos_dir, 'unstable', 'linux-dmabuf', 'linux-dmabuf-unstable-v1.xml')
+wl_dmabuf_xml = join_paths(wl_protos_dir, 'stable', 'linux-dmabuf', 'linux-dmabuf-v1.xml')
 wp_presentation_time_xml = join_paths(wl_protos_dir, 'stable', 'presentation-time', 'presentation-time.xml')
 wl_drm_syncobj_xml = join_paths(wl_protos_dir, 'staging', 'linux-drm-syncobj', 'linux-drm-syncobj-v1.xml')
 
