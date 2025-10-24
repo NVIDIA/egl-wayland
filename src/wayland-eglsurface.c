@@ -1663,7 +1663,7 @@ WlEglGetFormatSetForDev(WlEglDmaBufFeedback *feedback, dev_t dev, uint32_t forma
 static uint32_t ConfigToDrmFourCC(WlEglDisplay* display, EGLConfig config)
 {
     EGLDisplay dpy = display->devDpy->eglDisplay;
-    EGLint r, g, b, a;
+    EGLint r, g, b, a, componentType;
     EGLBoolean ret = EGL_TRUE;
 
     ret &= display->data->egl.getConfigAttrib(dpy,
@@ -1682,6 +1682,10 @@ static uint32_t ConfigToDrmFourCC(WlEglDisplay* display, EGLConfig config)
                                               config,
                                               EGL_ALPHA_SIZE,
                                               &a);
+    ret &= display->data->egl.getConfigAttrib(dpy,
+                                              config,
+                                              EGL_COLOR_COMPONENT_TYPE_EXT,
+                                              &componentType);
 
     if (!ret) {
         /*
@@ -1699,19 +1703,34 @@ static uint32_t ConfigToDrmFourCC(WlEglDisplay* display, EGLConfig config)
 #define PACK_CONFIG(r_, g_, b_, a_) \
     (((r_) << 24ULL) | ((g_) << 16ULL) | ((b_) << 8ULL) | (a_))
 
-    switch (PACK_CONFIG(r, g, b, a)) {
-    case PACK_CONFIG(8, 8, 8, 0):
-        return DRM_FORMAT_XRGB8888;
-    case PACK_CONFIG(8, 8, 8, 8):
-        return DRM_FORMAT_ARGB8888;
-    case PACK_CONFIG(5, 6, 5, 0):
-        return DRM_FORMAT_RGB565;
-    case PACK_CONFIG(10, 10, 10, 0):
-        return DRM_FORMAT_XRGB2101010;
-    case PACK_CONFIG(10, 10, 10, 2):
-        return DRM_FORMAT_ARGB2101010;
-    default:
-        return 0; /* DRM_FORMAT_INVALID */
+    if (componentType == EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT) {
+        switch (PACK_CONFIG(r, g, b, a)) {
+        case PACK_CONFIG(16, 16, 16, 0):
+            return DRM_FORMAT_XBGR16161616F;
+        case PACK_CONFIG(16, 16, 16, 16):
+            return DRM_FORMAT_ABGR16161616F;
+        default:
+            return 0; /* DRM_FORMAT_INVALID */
+        }
+    } else {
+        switch (PACK_CONFIG(r, g, b, a)) {
+        case PACK_CONFIG(8, 8, 8, 0):
+            return DRM_FORMAT_XRGB8888;
+        case PACK_CONFIG(8, 8, 8, 8):
+            return DRM_FORMAT_ARGB8888;
+        case PACK_CONFIG(5, 6, 5, 0):
+            return DRM_FORMAT_RGB565;
+        case PACK_CONFIG(10, 10, 10, 0):
+            return DRM_FORMAT_XRGB2101010;
+        case PACK_CONFIG(10, 10, 10, 2):
+            return DRM_FORMAT_ARGB2101010;
+        case PACK_CONFIG(16, 16, 16, 0):
+            return DRM_FORMAT_XBGR16161616;
+        case PACK_CONFIG(16, 16, 16, 16):
+            return DRM_FORMAT_ABGR16161616;
+        default:
+            return 0; /* DRM_FORMAT_INVALID */
+        }
     }
 }
 
