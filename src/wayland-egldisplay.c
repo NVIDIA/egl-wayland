@@ -23,7 +23,7 @@
 #include "wayland-egldisplay.h"
 #include "wayland-eglstream-client-protocol.h"
 #include "wayland-eglstream-controller-client-protocol.h"
-#include "linux-dmabuf-unstable-v1-client-protocol.h"
+#include "linux-dmabuf-v1-client-protocol.h"
 #include "wayland-eglstream-server.h"
 #include "wayland-thread.h"
 #include "wayland-eglsurface-internal.h"
@@ -46,7 +46,13 @@ typedef struct WlServerProtocolsRec {
     EGLBoolean hasEglStream;
     EGLBoolean hasDmaBuf;
     struct zwp_linux_dmabuf_v1 *wlDmaBuf;
+    int dmabufVersion;
     dev_t devId;
+
+    struct {
+        dev_t targetDev;
+        bool sampled;
+    } currentTranche;
 
     WlEglPlatformData *pData;
 
@@ -446,7 +452,7 @@ registry_handle_global(void *data,
             display->wlDmaBuf = wl_registry_bind(registry,
                                                  name,
                                                  &zwp_linux_dmabuf_v1_interface,
-                                                 version > 3 ? 4 : 3);
+                                                 version > 6 ? 6 : version);
         }
         display->dmaBufProtocolVersion = version;
     } else if (strcmp(interface, "wp_presentation") == 0) {
@@ -531,9 +537,12 @@ dmabuf_feedback_check_tranche_target_device(void *data,
                                       struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
                                       struct wl_array *dev)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
     (void) dev;
+
+    assert(dev->size == sizeof(dev_t));
+    memcpy(&protocols->currentTranche.targetDev, dev->data, sizeof(dev_t));
 }
 
 static void
@@ -541,9 +550,11 @@ dmabuf_feedback_check_tranche_flags(void *data,
                               struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback,
                               uint32_t flags)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
     (void) flags;
+
+    protocols->currentTranche.sampled |= flags & ZWP_LINUX_DMABUF_FEEDBACK_V1_TRANCHE_FLAGS_SAMPLING;
 }
 
 static void
@@ -560,8 +571,18 @@ static void
 dmabuf_feedback_check_tranche_done(void *data,
                              struct zwp_linux_dmabuf_feedback_v1 *dmabuf_feedback)
 {
-    (void) data;
+    WlServerProtocols *protocols = (WlServerProtocols *)data;
     (void) dmabuf_feedback;
+
+    /*
+     * If we are on dmabuf v6 then we need to record the first device id that has
+     * the sampled flag set. This is the replacement for the main device event.
+     */
+    if (protocols->dmabufVersion >= 6
+        && protocols->currentTranche.targetDev != 0
+        && protocols->currentTranche.sampled) {
+        protocols->devId = protocols->currentTranche.targetDev;
+    }
 }
 
 static void
@@ -625,9 +646,11 @@ registry_handle_global_check_protocols(
     if ((strcmp(interface, "zwp_linux_dmabuf_v1") == 0) &&
         (version >= 3)) {
         protocols->hasDmaBuf = EGL_TRUE;
+        protocols->dmabufVersion = version;
         /* Version 4 introduced default_feedback which allows us to determine the device used by the compositor */
         if (version >= 4) {
-            protocols->wlDmaBuf = wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 4);
+            protocols->wlDmaBuf = wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface,
+                                                   version > 6 ? 6 : version);
         }
     }
 
