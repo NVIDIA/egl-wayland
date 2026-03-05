@@ -1217,7 +1217,24 @@ wlEglSurfaceCheckReleasePoints(WlEglDisplay *display, WlEglSurface *surface)
      * Not all compositors will hold 3 and 4 indefinitely, although Kwin does
      * at certain times.
      */
-    timeout = numSyncPoints >= 3 ? INT64_MAX : 0;
+    /*
+     * FIX: Cap the timeout to 100ms instead of waiting indefinitely.
+     *
+     * When the compositor is blocked on the kernel-side nvkms_lock (held by a
+     * client GEM buffer allocation), it cannot signal release points for
+     * previously-committed buffers.  With INT64_MAX, the client blocks forever
+     * waiting for those release points, creating a circular deadlock:
+     *
+     *   Client holds nvkms_lock (via GEM alloc) -> compositor blocks on flip
+     *   -> compositor can't release buffers -> client waits INT64_MAX here
+     *   -> client can't release nvkms_lock -> system freeze
+     *
+     * A 100ms timeout lets the client back off and retry, breaking the
+     * deadlock while still allowing normal explicit sync to function.
+     *
+     * See: https://github.com/NVIDIA/egl-wayland/issues/XXX
+     */
+    timeout = numSyncPoints >= 3 ? 100000000LL /* 100ms in nanoseconds */ : 0;
 
     /*
      * The Linux docs say that DRM_SYNCOBJ_WAIT_FLAGS_WAIT_AVAILABLE should be
