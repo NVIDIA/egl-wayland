@@ -385,6 +385,15 @@ dmabuf_feedback_format_table(void *data,
     (void) dmabuf_feedback;
 
     assert(size % sizeof(WlEglDmaBufFormatTableEntry) == 0);
+
+    /* On a feedback resend, unmap the previous table before replacing it. */
+    if (feedback->formatTable.entry &&
+        feedback->formatTable.entry != MAP_FAILED &&
+        feedback->formatTable.len > 0) {
+        munmap((void *)feedback->formatTable.entry,
+               sizeof(feedback->formatTable.entry[0]) * feedback->formatTable.len);
+    }
+
     feedback->formatTable.len = size / sizeof(WlEglDmaBufFormatTableEntry);
 
     feedback->formatTable.entry =
@@ -590,8 +599,10 @@ dmabuf_feedback_check_format_table(void *data,
 {
     (void) data;
     (void) dmabuf_feedback;
-    (void) fd;
     (void) size;
+
+    /* This probe only cares about main_device; don't leak the table fd. */
+    close(fd);
 }
 
 static const struct zwp_linux_dmabuf_feedback_v1_listener dmabuf_feedback_check_listener = {
