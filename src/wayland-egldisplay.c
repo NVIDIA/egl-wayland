@@ -1441,6 +1441,21 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     /* We haven't created any surfaces yet, so no need to reallocate. */
     display->defaultFeedback.unprocessedFeedback = false;
 
+    /*
+     * The initial feedback burst was dispatched by the roundtrip above and
+     * its parsed data (format table, tranches) lives in defaultFeedback, not
+     * in the proxy. wlEventQueue is never dispatched again after init, so a
+     * live proxy would only accumulate undispatched resend events, each
+     * holding an open format-table fd (compositors such as mutter < 50
+     * resend feedback on every scanout-candidacy change), until the process
+     * hits RLIMIT_NOFILE. Destroy the proxy now; per-surface feedback keeps
+     * handling dynamic changes on queues that are dispatched at swap time.
+     */
+    if (display->defaultFeedback.wlDmaBufFeedback) {
+        zwp_linux_dmabuf_feedback_v1_destroy(display->defaultFeedback.wlDmaBufFeedback);
+        display->defaultFeedback.wlDmaBufFeedback = NULL;
+    }
+
     if (major != NULL) {
         *major = display->devDpy->major;
     }
