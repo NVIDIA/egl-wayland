@@ -1450,10 +1450,21 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
      * resend feedback on every scanout-candidacy change), until the process
      * hits RLIMIT_NOFILE. Destroy the proxy now; per-surface feedback keeps
      * handling dynamic changes on queues that are dispatched at swap time.
+     *
+     * The registry is likewise only needed to discover globals during
+     * initialization; destroying it stops runtime global announcements from
+     * accumulating on the queue. The queue itself is kept, unlike in
+     * egl-wayland2: wlDmaBuf and other long-lived proxies stay attached to
+     * it, and the EGLStream path still does swap-interval roundtrips on it.
      */
     if (display->defaultFeedback.wlDmaBufFeedback) {
         zwp_linux_dmabuf_feedback_v1_destroy(display->defaultFeedback.wlDmaBufFeedback);
         display->defaultFeedback.wlDmaBufFeedback = NULL;
+    }
+
+    if (display->wlRegistry) {
+        wl_registry_destroy(display->wlRegistry);
+        display->wlRegistry = NULL;
     }
 
     if (major != NULL) {
