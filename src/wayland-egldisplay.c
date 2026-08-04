@@ -151,12 +151,25 @@ typedef caddr_t pointer_t;
 typedef void *pointer_t;
 #endif
 
+static void
+wlEglFeedbackUnmapFormatTable(WlEglDmaBufFeedback *feedback)
+{
+    if (feedback->formatTable.entry &&
+        feedback->formatTable.entry != MAP_FAILED &&
+        feedback->formatTable.len > 0) {
+        munmap((pointer_t)feedback->formatTable.entry,
+               sizeof(feedback->formatTable.entry[0]) * feedback->formatTable.len);
+    }
+
+    feedback->formatTable.entry = NULL;
+    feedback->formatTable.len = 0;
+}
+
 void
 wlEglDestroyFeedback(WlEglDmaBufFeedback *feedback)
 {
     wlEglFeedbackResetTranches(feedback);
-    munmap((pointer_t)feedback->formatTable.entry,
-           sizeof(feedback->formatTable.entry[0]) * feedback->formatTable.len);
+    wlEglFeedbackUnmapFormatTable(feedback);
 
     if (feedback->wlDmaBufFeedback) {
         zwp_linux_dmabuf_feedback_v1_destroy(feedback->wlDmaBufFeedback);
@@ -387,12 +400,7 @@ dmabuf_feedback_format_table(void *data,
     assert(size % sizeof(WlEglDmaBufFormatTableEntry) == 0);
 
     /* On a feedback resend, unmap the previous table before replacing it. */
-    if (feedback->formatTable.entry &&
-        feedback->formatTable.entry != MAP_FAILED &&
-        feedback->formatTable.len > 0) {
-        munmap((void *)feedback->formatTable.entry,
-               sizeof(feedback->formatTable.entry[0]) * feedback->formatTable.len);
-    }
+    wlEglFeedbackUnmapFormatTable(feedback);
 
     feedback->formatTable.len = size / sizeof(WlEglDmaBufFormatTableEntry);
 
@@ -1457,6 +1465,13 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     if (display->defaultFeedback.wlDmaBufFeedback) {
         zwp_linux_dmabuf_feedback_v1_destroy(display->defaultFeedback.wlDmaBufFeedback);
         display->defaultFeedback.wlDmaBufFeedback = NULL;
+
+        /*
+         * The tranches parsed out of the format table are self-contained
+         * copies, and no further tranche events can arrive once the proxy is
+         * gone, so the mapping is no longer needed.
+         */
+        wlEglFeedbackUnmapFormatTable(&display->defaultFeedback);
     }
 
     if (wlRegistry) {
