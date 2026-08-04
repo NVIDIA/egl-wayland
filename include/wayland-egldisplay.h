@@ -129,7 +129,6 @@ typedef struct WlEglDisplayRec {
     EGLBoolean         ownNativeDpy;
     struct wl_display *nativeDpy;
 
-    struct wl_registry             *wlRegistry;
     struct wl_eglstream_display    *wlStreamDpy;
     struct wl_eglstream_controller *wlStreamCtl;
     struct zwp_linux_dmabuf_v1     *wlDmaBuf;

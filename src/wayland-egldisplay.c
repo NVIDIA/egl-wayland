@@ -743,10 +743,6 @@ static EGLBoolean terminateDisplay(WlEglDisplay *display, EGLBoolean globalTeard
         wlEglDestroyFormatSet(&display->formatSet);
         wlEglDestroyFeedback(&display->defaultFeedback);
 
-        if (display->wlRegistry) {
-            wl_registry_destroy(display->wlRegistry);
-            display->wlRegistry = NULL;
-        }
         if (display->wlStreamDpy) {
             wl_eglstream_display_destroy(display->wlStreamDpy);
             display->wlStreamDpy = NULL;
@@ -1325,6 +1321,7 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     WlEglDisplay      *display = wlEglAcquireDisplay(dpy);
     WlEglPlatformData *data    = NULL;
     struct wl_display *wrapper = NULL;
+    struct wl_registry *wlRegistry = NULL;
     EGLint             err     = EGL_SUCCESS;
     int                ret     = 0;
     const char *dev_exts = NULL;
@@ -1388,9 +1385,9 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     /* Listen to wl_registry events and make a roundtrip in order to find the
      * wl_eglstream_display and/or zwp_linux_dmabuf_v1 global object
      */
-    display->wlRegistry = wl_display_get_registry(wrapper);
+    wlRegistry = wl_display_get_registry(wrapper);
     wl_proxy_wrapper_destroy(wrapper); /* Done with wrapper */
-    ret = wl_registry_add_listener(display->wlRegistry,
+    ret = wl_registry_add_listener(wlRegistry,
                                    &registry_listener,
                                    display);
     if (ret == 0) {
@@ -1462,9 +1459,9 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
         display->defaultFeedback.wlDmaBufFeedback = NULL;
     }
 
-    if (display->wlRegistry) {
-        wl_registry_destroy(display->wlRegistry);
-        display->wlRegistry = NULL;
+    if (wlRegistry) {
+        wl_registry_destroy(wlRegistry);
+        wlRegistry = NULL;
     }
 
     if (major != NULL) {
@@ -1479,6 +1476,9 @@ EGLBoolean wlEglInitializeHook(EGLDisplay dpy, EGLint *major, EGLint *minor)
     return EGL_TRUE;
 
 fail:
+    if (wlRegistry) {
+        wl_registry_destroy(wlRegistry);
+    }
     terminateDisplay(display, EGL_FALSE);
     if (err != EGL_SUCCESS) {
         wlEglSetError(data, err);
