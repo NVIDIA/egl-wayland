@@ -173,6 +173,7 @@ wlEglDestroyFeedback(WlEglDmaBufFeedback *feedback)
 
     if (feedback->wlDmaBufFeedback) {
         zwp_linux_dmabuf_feedback_v1_destroy(feedback->wlDmaBufFeedback);
+        feedback->wlDmaBufFeedback = NULL;
     }
 }
 
