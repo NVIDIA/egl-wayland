@@ -6,9 +6,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt update
-      - run: sudo apt install -y wayland-protocols libdrm-dev libegl-dev
+      - run: sudo apt install -y libdrm-dev libegl-dev
       - run: sudo apt install -y libwayland-dev libwayland-egl-backend-dev eglexternalplatform-dev
       - run: sudo apt install -y meson ninja-build gcc
+      # Ubuntu's wayland-protocols is too old for linux-dmabuf v6.
+      - name: Build wayland-protocols 1.49 from source
+        run: |
+          curl -L https://gitlab.freedesktop.org/wayland/wayland-protocols/-/releases/1.49/downloads/wayland-protocols-1.49.tar.xz | tar xJ
+          cd wayland-protocols-1.49
+          meson setup build --prefix=/usr -Dtests=false
+          ninja -C build
+          sudo ninja -C build install
       - run: ./autogen.sh
       - run: make
       - run: sudo make install
