@@ -965,6 +965,7 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     EGLBoolean usePrimeRenderOffload = EGL_FALSE;
     EGLBoolean isServerNV;
     const char *drmName = NULL;
+    const char *devExts = NULL;
 
     if (platform != EGL_PLATFORM_WAYLAND_EXT) {
         wlEglSetError(data, EGL_BAD_PARAMETER);
@@ -1207,13 +1208,24 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
     WL_LIST_INIT(&display->wlEglSurfaceList);
 
     /* Get the DRM device in use */
-    drmName = display->data->egl.queryDeviceString(display->devDpy->eglDevice,
-                                                   EGL_DRM_DEVICE_FILE_EXT);
-    if (!drmName) {
+    devExts = display->data->egl.queryDeviceString(display->devDpy->eglDevice, EGL_EXTENSIONS);
+    if (!devExts) {
         goto fail;
     }
 
-    display->drmFd = open(drmName, O_RDWR | O_CLOEXEC);
+    display->drmFd = -1;
+    if (wlEglFindExtension("EGL_EXT_device_drm_render_node", devExts)) {
+        drmName = display->data->egl.queryDeviceString(display->devDpy->eglDevice, EGL_DRM_RENDER_NODE_FILE_EXT);
+        if (drmName) {
+            display->drmFd = open(drmName, O_RDWR | O_CLOEXEC);
+        }
+    }
+    if (display->drmFd < 0 && wlEglFindExtension("EGL_EXT_device_drm", devExts)) {
+        drmName = display->data->egl.queryDeviceString(display->devDpy->eglDevice, EGL_DRM_DEVICE_FILE_EXT);
+        if (drmName) {
+            display->drmFd = open(drmName, O_RDWR | O_CLOEXEC);
+        }
+    }
     if (display->drmFd < 0) {
         goto fail;
     }
