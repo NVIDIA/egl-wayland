@@ -2186,6 +2186,11 @@ WlEglSurface *wlEglCreateSurfaceExport(EGLDisplay dpy,
     }
 
     surface->refCount = 1;
+    wl_list_init(&surface->ctx.streamImages);
+
+    if (!wlEglInitializeMutex(&surface->ctx.streamImagesMutex)) {
+        goto fail;
+    }
 
     if (!wlEglInitializeMutex(&surface->mutexLock)) {
         goto fail;
