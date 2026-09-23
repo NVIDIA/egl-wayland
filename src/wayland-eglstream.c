@@ -89,14 +89,16 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
     }
 
     if (err != EGL_SUCCESS) {
-        goto fail;
+        goto fail_unlock;
     }
 
     wlStream = wl_eglstream_display_get_stream(wlStreamDpy, resource);
     if (wlStream == NULL) {
         err = EGL_BAD_ACCESS;
-        goto fail;
+        goto fail_unlock;
     }
+
+    wlExternalApiUnlock();
 
     if (wlStream->eglStream != EGL_NO_STREAM_KHR ||
         wlStream->handle == -1) {
@@ -237,12 +239,11 @@ EGLStreamKHR wlEglCreateStreamAttribHook(EGLDisplay dpy,
     wlStream->eglStream = stream;
     wlStream->handle = -1;
 
-    wlExternalApiUnlock();
-
     return stream;
 
-fail:
+fail_unlock:
     wlExternalApiUnlock();
+fail:
     wlEglSetError(data, err);
     return EGL_NO_STREAM_KHR;
 }
