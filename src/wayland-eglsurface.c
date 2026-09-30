@@ -2602,7 +2602,8 @@ static EGLBoolean wlEglDestroySurface(EGLDisplay dpy, EGLSurface eglSurface)
         // We only expect a valid wlEglWin to be set when using
         // a surface created with EGL_KHR_platform_wayland.
         if (wlEglIsWaylandDisplay(display->nativeDpy) &&
-            wlEglIsWaylandWindowValid(surface->wlEglWin)) {
+            surface->wlEglWin &&
+            wlEglMemoryIsReadable(surface->wlEglWin, sizeof(*surface->wlEglWin))) {
 
             surface->wlEglWin->driver_private = NULL;
             surface->wlEglWin->resize_callback = NULL;
@@ -2694,16 +2695,25 @@ static void
 destroy_callback(void *data)
 {
     WlEglSurface *surface = (WlEglSurface*)data;
-    WlEglDisplay *display = surface->wlEglDpy;
+    WlEglDisplay *display;
+
+    if (!surface) {
+        return;
+    }
+
+    display = surface->wlEglDpy;
+    if (!display) {
+        return;
+    }
 
     pthread_mutex_lock(&display->mutex);
 
-    if (!surface || surface->wlEglDpy->initCount == 0) {
+    if (display->initCount == 0) {
         pthread_mutex_unlock(&display->mutex);
         return;
     }
 
-    wlEglDestroySurface((EGLDisplay)surface->wlEglDpy,
+    wlEglDestroySurface((EGLDisplay)display,
                         (EGLSurface)surface);
     pthread_mutex_unlock(&display->mutex);
 }
