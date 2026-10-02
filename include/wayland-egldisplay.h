@@ -181,6 +181,13 @@ typedef struct WlEglDisplayRec {
 
     WlEglDmaBufFeedback defaultFeedback;
 
+    /*
+     * Set when we render on a different device than the compositor's main
+     * device. Used as the PRIME state for surfaces on linux-dmabuf < 6, where
+     * there are no sampling tranches to derive it from.
+     */
+    EGLBoolean primeRenderOffload;
+
     char *extensionString;
 } WlEglDisplay;
 
