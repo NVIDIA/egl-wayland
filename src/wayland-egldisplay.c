@@ -1370,6 +1370,14 @@ EGLDisplay wlEglGetPlatformDisplayExport(void *data,
         goto fail;
     }
 
+    if (eglDevice != serverDevice) {
+        /*
+         * If we're rendering with a different device than the compositor is
+         * using, then we'll need to use the PRIME offloading path.
+         */
+        display->primeRenderOffload = EGL_TRUE;
+    }
+
     display->devDpy = wlGetInternalDisplay(pData, eglDevice);
     if (display->devDpy == NULL) {
         goto fail;

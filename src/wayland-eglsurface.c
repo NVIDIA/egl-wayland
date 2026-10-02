@@ -2292,7 +2292,9 @@ WlEglSurface *wlEglCreateSurfaceExport2(EGLDisplay dpy,
  * tranches.  Called when the compositor sends new feedback for this surface
  * (e.g. surface moved to an output backed by a different GPU).
  *
- * Only meaningful for linux-dmabuf v6+; earlier versions use main_device.
+ * Before linux-dmabuf v6 there are no sampling tranches, so fall back to the
+ * display-wide PRIME state derived from the device comparison in
+ * wlEglGetPlatformDisplayExport.
  */
 static void
 wlEglUpdateSurfacePrimeState(WlEglDisplay *display, WlEglSurface *surface)
@@ -2304,8 +2306,11 @@ wlEglUpdateSurfacePrimeState(WlEglDisplay *display, WlEglSurface *surface)
     bool nvidia_can_sample = false;
     WlEglDmaBufFeedback *feedback = &surface->feedback;
 
-    if (display->dmaBufProtocolVersion < 6)
+    if (display->dmaBufProtocolVersion < 6) {
+        surface->primeRenderOffload = display->primeRenderOffload;
+        surface->primeSamplingDevice = 0;
         return;
+    }
 
     /*
      * The compositor is free to advertise either the primary or the render
@@ -2912,10 +2917,14 @@ EGLSurface wlEglCreatePlatformWindowSurfaceHook(EGLDisplay dpy,
             goto fail;
         }
 
-        /* Set initial per-surface PRIME state from the surface feedback. */
-        wlEglUpdateSurfacePrimeState(display, surface);
         surface->feedback.unprocessedFeedback = false;
     }
+
+    /*
+     * Set the initial PRIME state. On dmabuf v6 this comes from the surface
+     * feedback gathered above, on older versions from the display.
+     */
+    wlEglUpdateSurfacePrimeState(display, surface);
 
     if (display->wlDrmSyncobj) {
         /* Create a DRM timeline and share it with the compositor */
