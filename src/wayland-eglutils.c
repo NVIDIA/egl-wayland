@@ -58,21 +58,48 @@ EGLBoolean wlEglFindExtension(const char *extension, const char *extensions)
     return EGL_FALSE;
 }
 
+static int try_pipe_write(int fd, const void *p, size_t len)
+{
+    int result;
+
+    do {
+        result = write(fd, p, len);
+    } while (result == -1 && errno == EINTR);
+    if (result == -1 && errno == EAGAIN) {
+        result = 0;
+    }
+    assert(result != -1 || errno == EFAULT || errno == EINVAL);
+    return result;
+}
+
 EGLBoolean wlEglMemoryIsReadable(const void *p, size_t len)
 {
     int fds[2], result = -1;
     if (pipe(fds) == -1) {
         return EGL_FALSE;
     }
+    if (len == 0) {
+        len = 1;
+    }
 
+    if (fcntl(fds[0], F_SETFL, O_NONBLOCK) == -1) {
+        goto done;
+    }
     if (fcntl(fds[1], F_SETFL, O_NONBLOCK) == -1) {
         goto done;
     }
 
     /* write will fail with EFAULT if the provided buffer is outside
      * our accessible address space. */
-    result = write(fds[1], p, len);
-    assert(result != -1 || errno == EFAULT);
+    result = try_pipe_write(fds[1], (const char *)p + (len - 1), 1);
+    if (result != -1) {
+        char drain;
+        /* restore full PIPE_BUF space in pipe */
+        while (read(fds[0], &drain, 1) == -1 && errno == EINTR) {
+            /* retry */
+        }
+        result = try_pipe_write(fds[1], p, len);
+    }
 
 done:
     close(fds[0]);
